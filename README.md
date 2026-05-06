@@ -127,6 +127,12 @@ python scripts/list_posts.py --limit 10
 python scripts/list_posts.py --channel whackdoor --limit 10
 ```
 
+Ранжирование постов простой эвристикой без LLM:
+
+```bash
+python scripts/rank_posts.py --limit 50 --top 10
+```
+
 ## Экспорт дайджеста без LLM
 
 Markdown:
@@ -157,6 +163,12 @@ python scripts/make_digest.py --since 2026-05-06 --until 2026-05-06
 
 ```bash
 python scripts/make_digest.py --min-views 5000 --contains Python --exclude реклама
+```
+
+Экспорт с сортировкой по простому score:
+
+```bash
+python scripts/make_digest.py --ranked --limit 20
 ```
 
 По умолчанию файлы создаются в `data/episodes/`.
@@ -202,6 +214,8 @@ pytest
 make test
 make collect
 make stats
+make list
+make rank
 make digest
 make validate
 ```

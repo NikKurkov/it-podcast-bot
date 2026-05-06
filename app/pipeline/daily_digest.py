@@ -1,13 +1,14 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from itertools import groupby
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from app.db.models import TelegramPost
 from app.db.repositories.posts import get_posts_for_digest
+from app.pipeline.scoring import score_post
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class DigestItem:
     url: str | None
     views: int | None
     forwards: int | None
+    score: float | None = None
 
 
 def build_digest_items(
@@ -33,6 +35,7 @@ def build_digest_items(
     min_forwards: int | None = None,
     contains: str | None = None,
     exclude: str | None = None,
+    ranked: bool = False,
 ) -> list[DigestItem]:
     posts = get_posts_for_digest(
         session,
@@ -46,7 +49,10 @@ def build_digest_items(
         contains=contains,
         exclude=exclude,
     )
-    return [_post_to_digest_item(post) for post in posts]
+    if ranked:
+        posts = sorted(posts, key=score_post, reverse=True)
+
+    return [_post_to_digest_item(post, include_score=ranked) for post in posts]
 
 
 def export_digest_markdown(items: list[DigestItem], output_path: Path) -> None:
@@ -89,6 +95,7 @@ def export_digest_json(items: list[DigestItem], output_path: Path) -> None:
             "url": item.url,
             "views": item.views,
             "forwards": item.forwards,
+            "score": item.score,
         }
         for item in items
     ]
@@ -98,7 +105,7 @@ def export_digest_json(items: list[DigestItem], output_path: Path) -> None:
     )
 
 
-def _post_to_digest_item(post: TelegramPost) -> DigestItem:
+def _post_to_digest_item(post: TelegramPost, include_score: bool = False) -> DigestItem:
     return DigestItem(
         post_id=post.id,
         source=post.source_channel.username,
@@ -108,6 +115,7 @@ def _post_to_digest_item(post: TelegramPost) -> DigestItem:
         url=post.url,
         views=post.views,
         forwards=post.forwards,
+        score=score_post(post) if include_score else None,
     )
 
 
@@ -117,5 +125,7 @@ def _format_metrics(item: DigestItem) -> str:
         metrics.append(f"views: {item.views}")
     if item.forwards is not None:
         metrics.append(f"forwards: {item.forwards}")
+    if item.score is not None:
+        metrics.append(f"score: {item.score:.2f}")
 
     return f" ({', '.join(metrics)})" if metrics else ""

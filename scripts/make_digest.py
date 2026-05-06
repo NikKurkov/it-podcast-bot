@@ -37,6 +37,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--contains", default=None, help="Export posts containing this text.")
     parser.add_argument("--exclude", default=None, help="Skip posts containing this text.")
     parser.add_argument(
+        "--ranked",
+        action="store_true",
+        help="Sort exported posts by simple non-LLM score and include score in output.",
+    )
+    parser.add_argument(
         "--mark-processed",
         action="store_true",
         help="Mark exported posts as processed after successful export.",
@@ -74,6 +79,7 @@ def main() -> None:
             min_forwards=args.min_forwards,
             contains=args.contains,
             exclude=args.exclude,
+            ranked=args.ranked,
         )
 
         if args.format == "json":
