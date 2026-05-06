@@ -85,6 +85,18 @@ data/it_podcast_bot.sqlite3
 
 ## Просмотр базы
 
+Проверка локальной настройки:
+
+```bash
+python scripts/check_setup.py
+```
+
+Проверка сохранённой Telegram-сессии без запуска интерактивной авторизации:
+
+```bash
+python scripts/check_setup.py --telegram
+```
+
 Статистика:
 
 ```bash
