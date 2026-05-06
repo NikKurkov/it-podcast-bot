@@ -11,6 +11,7 @@ from app.db.repositories.episodes import create_episode_draft
 from app.db.repositories.posts import mark_posts_processed
 from app.db.session import SessionLocal, init_db
 from app.pipeline.daily_digest import build_digest_items, export_digest_json, export_digest_markdown
+from app.pipeline.filters import filter_excluded_items, load_exclude_keywords
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--only-unprocessed", action="store_true")
     parser.add_argument("--ranked", action="store_true", default=True)
     parser.add_argument("--mark-processed", action="store_true")
+    parser.add_argument("--use-exclude-keywords", action="store_true")
     return parser.parse_args()
 
 
@@ -39,6 +41,8 @@ def main() -> None:
             only_unprocessed=args.only_unprocessed,
             ranked=args.ranked,
         )
+        if args.use_exclude_keywords:
+            items = filter_excluded_items(items, load_exclude_keywords())
         export_digest_markdown(items, markdown_path)
         export_digest_json(items, json_path)
 

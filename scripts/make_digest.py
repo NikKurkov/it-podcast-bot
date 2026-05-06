@@ -9,6 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.db.repositories.posts import mark_posts_processed
 from app.db.session import SessionLocal, init_db
+from app.pipeline.filters import filter_excluded_items, load_exclude_keywords
 from app.pipeline.daily_digest import (
     build_digest_items,
     export_digest_json,
@@ -36,6 +37,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--contains", default=None, help="Export posts containing this text.")
     parser.add_argument("--exclude", default=None, help="Skip posts containing this text.")
+    parser.add_argument(
+        "--use-exclude-keywords",
+        action="store_true",
+        help="Skip posts containing keywords from EXCLUDE_KEYWORDS_FILE.",
+    )
     parser.add_argument(
         "--ranked",
         action="store_true",
@@ -81,6 +87,8 @@ def main() -> None:
             exclude=args.exclude,
             ranked=args.ranked,
         )
+        if args.use_exclude_keywords:
+            items = filter_excluded_items(items, load_exclude_keywords())
 
         if args.format == "json":
             export_digest_json(items, output_path)

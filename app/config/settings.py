@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     telegram_channels: str | None = Field(default=None, alias="TELEGRAM_CHANNELS")
     telegram_channels_file: str = Field(default="config/channels.txt", alias="TELEGRAM_CHANNELS_FILE")
     telegram_proxy_url: str | None = Field(default=None, alias="TELEGRAM_PROXY_URL")
+    exclude_keywords_file: str = Field(default="config/exclude_keywords.txt", alias="EXCLUDE_KEYWORDS_FILE")
 
     model_config = SettingsConfigDict(
         env_file=".env",

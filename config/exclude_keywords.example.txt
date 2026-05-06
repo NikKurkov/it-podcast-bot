@@ -1,0 +1,4 @@
+# Posts containing these substrings can be excluded from digest exports.
+реклама
+скидка
+промокод

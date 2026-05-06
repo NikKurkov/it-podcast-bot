@@ -50,6 +50,7 @@ DATABASE_URL=sqlite:///data/it_podcast_bot.sqlite3
 LOG_LEVEL=INFO
 DEFAULT_LIMIT_PER_CHANNEL=20
 TELEGRAM_CHANNELS_FILE=config/channels.txt
+EXCLUDE_KEYWORDS_FILE=config/exclude_keywords.txt
 ```
 
 Если Telegram недоступен напрямую, можно указать SOCKS-прокси:
@@ -169,6 +170,12 @@ python scripts/make_digest.py --min-views 5000 --contains Python --exclude ре�
 
 ```bash
 python scripts/make_digest.py --ranked --limit 20
+```
+
+Исключить посты по словам из `config/exclude_keywords.txt`:
+
+```bash
+python scripts/make_digest.py --use-exclude-keywords --ranked --limit 20
 ```
 
 По умолчанию файлы создаются в `data/episodes/`.
