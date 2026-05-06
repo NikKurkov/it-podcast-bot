@@ -11,6 +11,7 @@ from app.db.repositories.posts import get_posts_for_digest
 
 @dataclass(frozen=True)
 class DigestItem:
+    post_id: int
     source: str
     title: str | None
     message_date: datetime
@@ -25,12 +26,16 @@ def build_digest_items(
     limit: int = 50,
     source_username: str | None = None,
     only_unprocessed: bool = False,
+    since: datetime | None = None,
+    until: datetime | None = None,
 ) -> list[DigestItem]:
     posts = get_posts_for_digest(
         session,
         limit=limit,
         source_username=source_username,
         only_unprocessed=only_unprocessed,
+        since=since,
+        until=until,
     )
     return [_post_to_digest_item(post) for post in posts]
 
@@ -68,6 +73,7 @@ def export_digest_json(items: list[DigestItem], output_path: Path) -> None:
     payload = [
         {
             "source": item.source,
+            "post_id": item.post_id,
             "title": item.title,
             "message_date": item.message_date.isoformat(),
             "text": item.text,
@@ -85,6 +91,7 @@ def export_digest_json(items: list[DigestItem], output_path: Path) -> None:
 
 def _post_to_digest_item(post: TelegramPost) -> DigestItem:
     return DigestItem(
+        post_id=post.id,
         source=post.source_channel.username,
         title=post.source_channel.title,
         message_date=post.message_date,

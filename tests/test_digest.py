@@ -33,6 +33,7 @@ def test_build_and_export_digest(tmp_path) -> None:
 
     assert items[0].source == "durov"
     assert "Digest item" in markdown_path.read_text(encoding="utf-8")
+    assert '"post_id":' in json_path.read_text(encoding="utf-8")
     assert '"source": "durov"' in json_path.read_text(encoding="utf-8")
 
 

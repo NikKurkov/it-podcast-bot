@@ -102,6 +102,8 @@ def get_posts_for_digest(
     limit: int = 50,
     source_username: str | None = None,
     only_unprocessed: bool = False,
+    since: datetime | None = None,
+    until: datetime | None = None,
 ) -> list[TelegramPost]:
     statement = (
         select(TelegramPost)
@@ -113,6 +115,10 @@ def get_posts_for_digest(
         statement = statement.where(SourceChannel.username == source_username.strip().lstrip("@"))
     if only_unprocessed:
         statement = statement.where(TelegramPost.is_processed.is_(False))
+    if since:
+        statement = statement.where(TelegramPost.message_date >= since)
+    if until:
+        statement = statement.where(TelegramPost.message_date <= until)
 
     return list(session.scalars(statement).all())
 
@@ -125,3 +131,14 @@ def count_posts_by_source(session: Session) -> list[tuple[str, str | None, int]]
         .order_by(SourceChannel.username)
     )
     return [(username, title, count) for username, title, count in session.execute(statement).all()]
+
+
+def mark_posts_processed(session: Session, post_ids: list[int]) -> int:
+    if not post_ids:
+        return 0
+
+    posts = list(session.scalars(select(TelegramPost).where(TelegramPost.id.in_(post_ids))).all())
+    for post in posts:
+        post.is_processed = True
+    session.commit()
+    return len(posts)

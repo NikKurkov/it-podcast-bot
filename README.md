@@ -117,6 +117,18 @@ JSON:
 python scripts/make_digest.py --limit 50 --format json
 ```
 
+Только необработанные посты с пометкой после успешного экспорта:
+
+```bash
+python scripts/make_digest.py --only-unprocessed --mark-processed --limit 50
+```
+
+Фильтр по дате:
+
+```bash
+python scripts/make_digest.py --since 2026-05-06 --until 2026-05-06
+```
+
 По умолчанию файлы создаются в `data/episodes/`.
 
 ## Как поменять список каналов
