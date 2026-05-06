@@ -153,6 +153,12 @@ python scripts/make_digest.py --only-unprocessed --mark-processed --limit 50
 python scripts/make_digest.py --since 2026-05-06 --until 2026-05-06
 ```
 
+Простые фильтры без LLM:
+
+```bash
+python scripts/make_digest.py --min-views 5000 --contains Python --exclude реклама
+```
+
 По умолчанию файлы создаются в `data/episodes/`.
 
 ## Как поменять список каналов

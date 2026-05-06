@@ -104,6 +104,10 @@ def get_posts_for_digest(
     only_unprocessed: bool = False,
     since: datetime | None = None,
     until: datetime | None = None,
+    min_views: int | None = None,
+    min_forwards: int | None = None,
+    contains: str | None = None,
+    exclude: str | None = None,
 ) -> list[TelegramPost]:
     statement = (
         select(TelegramPost)
@@ -119,6 +123,14 @@ def get_posts_for_digest(
         statement = statement.where(TelegramPost.message_date >= since)
     if until:
         statement = statement.where(TelegramPost.message_date <= until)
+    if min_views is not None:
+        statement = statement.where(TelegramPost.views >= min_views)
+    if min_forwards is not None:
+        statement = statement.where(TelegramPost.forwards >= min_forwards)
+    if contains:
+        statement = statement.where(TelegramPost.text.ilike(f"%{contains}%"))
+    if exclude:
+        statement = statement.where(TelegramPost.text.not_ilike(f"%{exclude}%"))
 
     return list(session.scalars(statement).all())
 

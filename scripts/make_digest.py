@@ -27,6 +27,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--since", default=None, help="Start date or datetime, inclusive.")
     parser.add_argument("--until", default=None, help="End date or datetime, inclusive.")
+    parser.add_argument("--min-views", type=int, default=None, help="Export posts with at least this many views.")
+    parser.add_argument(
+        "--min-forwards",
+        type=int,
+        default=None,
+        help="Export posts with at least this many forwards.",
+    )
+    parser.add_argument("--contains", default=None, help="Export posts containing this text.")
+    parser.add_argument("--exclude", default=None, help="Skip posts containing this text.")
     parser.add_argument(
         "--mark-processed",
         action="store_true",
@@ -61,6 +70,10 @@ def main() -> None:
             only_unprocessed=args.only_unprocessed,
             since=since,
             until=until,
+            min_views=args.min_views,
+            min_forwards=args.min_forwards,
+            contains=args.contains,
+            exclude=args.exclude,
         )
 
         if args.format == "json":

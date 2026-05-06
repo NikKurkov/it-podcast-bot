@@ -9,6 +9,7 @@ from app.db.repositories.posts import (
     count_posts_by_source,
     count_unprocessed_posts,
     get_latest_posts,
+    get_posts_for_digest,
     mark_posts_processed,
     save_post,
 )
@@ -85,6 +86,44 @@ def test_mark_posts_processed() -> None:
         assert post is not None
         assert mark_posts_processed(session, [post.id]) == 1
         assert count_unprocessed_posts(session) == 0
+
+
+def test_get_posts_for_digest_filters_by_metrics_and_text() -> None:
+    session_factory = _make_session_factory()
+    with session_factory() as session:
+        source = get_or_create_source(session, "pythonetc")
+        save_post(
+            session,
+            source,
+            {
+                "telegram_message_id": 1,
+                "message_date": datetime(2026, 5, 6, tzinfo=timezone.utc),
+                "text": "Python release",
+                "views": 1000,
+                "forwards": 10,
+            },
+        )
+        save_post(
+            session,
+            source,
+            {
+                "telegram_message_id": 2,
+                "message_date": datetime(2026, 5, 6, tzinfo=timezone.utc),
+                "text": "Advertisement",
+                "views": 50,
+                "forwards": 1,
+            },
+        )
+
+        posts = get_posts_for_digest(
+            session,
+            min_views=500,
+            min_forwards=5,
+            contains="python",
+            exclude="advertisement",
+        )
+
+        assert [post.telegram_message_id for post in posts] == [1]
 
 
 def _make_session_factory() -> sessionmaker:

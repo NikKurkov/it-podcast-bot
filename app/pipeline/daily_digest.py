@@ -29,6 +29,10 @@ def build_digest_items(
     only_unprocessed: bool = False,
     since: datetime | None = None,
     until: datetime | None = None,
+    min_views: int | None = None,
+    min_forwards: int | None = None,
+    contains: str | None = None,
+    exclude: str | None = None,
 ) -> list[DigestItem]:
     posts = get_posts_for_digest(
         session,
@@ -37,6 +41,10 @@ def build_digest_items(
         only_unprocessed=only_unprocessed,
         since=since,
         until=until,
+        min_views=min_views,
+        min_forwards=min_forwards,
+        contains=contains,
+        exclude=exclude,
     )
     return [_post_to_digest_item(post) for post in posts]
 
