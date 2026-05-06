@@ -11,6 +11,7 @@ from app.db.repositories.posts import (
     get_latest_posts,
     get_posts_for_digest,
     mark_posts_processed,
+    mark_posts_unprocessed,
     save_post,
     save_or_update_post,
 )
@@ -114,6 +115,8 @@ def test_mark_posts_processed() -> None:
         assert post is not None
         assert mark_posts_processed(session, [post.id]) == 1
         assert count_unprocessed_posts(session) == 0
+        assert mark_posts_unprocessed(session, [post.id]) == 1
+        assert count_unprocessed_posts(session) == 1
 
 
 def test_get_posts_for_digest_filters_by_metrics_and_text() -> None:

@@ -161,6 +161,12 @@ python scripts/make_digest.py --limit 50 --format json
 python scripts/make_digest.py --only-unprocessed --mark-processed --limit 50
 ```
 
+Сбросить флаг обработки для всех постов:
+
+```bash
+python scripts/mark_posts.py unprocessed --all
+```
+
 Фильтр по дате:
 
 ```bash

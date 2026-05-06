@@ -216,3 +216,17 @@ def mark_posts_processed(session: Session, post_ids: list[int]) -> int:
         post.is_processed = True
     session.commit()
     return len(posts)
+
+
+def mark_posts_unprocessed(session: Session, post_ids: list[int] | None = None) -> int:
+    statement = select(TelegramPost)
+    if post_ids is not None:
+        if not post_ids:
+            return 0
+        statement = statement.where(TelegramPost.id.in_(post_ids))
+
+    posts = list(session.scalars(statement).all())
+    for post in posts:
+        post.is_processed = False
+    session.commit()
+    return len(posts)

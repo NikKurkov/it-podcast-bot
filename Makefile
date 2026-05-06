@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup test check collect stats list show rank digest episode episodes validate backup channels
+.PHONY: setup test check collect stats list show rank digest episode episodes unprocess validate backup channels
 
 setup:
 	python -m venv .venv
@@ -35,6 +35,9 @@ episode:
 
 episodes:
 	$(PYTHON) scripts/list_episode_drafts.py
+
+unprocess:
+	$(PYTHON) scripts/mark_posts.py unprocessed --all
 
 validate:
 	$(PYTHON) scripts/validate_db.py
