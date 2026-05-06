@@ -89,6 +89,12 @@ SQLite-база по умолчанию лежит здесь:
 data/it_podcast_bot.sqlite3
 ```
 
+Полный локальный дневной прогон:
+
+```bash
+python scripts/daily_run.py --collect-limit 20 --digest-limit 10
+```
+
 Бэкап текущей SQLite-базы:
 
 ```bash
