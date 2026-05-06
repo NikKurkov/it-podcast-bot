@@ -21,7 +21,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the local daily MVP pipeline.")
     parser.add_argument("--collect-limit", type=int, default=20)
     parser.add_argument("--digest-limit", type=int, default=10)
-    parser.add_argument("--use-exclude-keywords", action="store_true", default=True)
+    parser.add_argument(
+        "--use-exclude-keywords",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Apply keyword exclusions from EXCLUDE_KEYWORDS_FILE.",
+    )
     parser.add_argument("--mark-processed", action="store_true")
     return parser.parse_args()
 
