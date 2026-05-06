@@ -12,6 +12,7 @@ from app.db.repositories.posts import (
     get_posts_for_digest,
     mark_posts_processed,
     save_post,
+    save_or_update_post,
 )
 from app.db.repositories.sources import count_sources, get_or_create_source
 
@@ -37,6 +38,33 @@ def test_save_post_deduplicates_by_source_and_message_id() -> None:
         assert second_post is None
         assert count_posts(session) == 1
         assert count_unprocessed_posts(session) == 1
+
+
+def test_save_or_update_post_updates_existing_metrics() -> None:
+    session_factory = _make_session_factory()
+    with session_factory() as session:
+        source = get_or_create_source(session, "durov")
+        post_data = {
+            "telegram_message_id": 1,
+            "message_date": datetime(2026, 5, 6, tzinfo=timezone.utc),
+            "text": "hello world",
+            "views": 10,
+            "forwards": 1,
+        }
+
+        first_result = save_or_update_post(session, source, post_data)
+        second_result = save_or_update_post(
+            session,
+            source,
+            {**post_data, "views": 20, "forwards": 2},
+        )
+
+        assert first_result["created"] is True
+        assert second_result["created"] is False
+        assert second_result["updated"] is True
+        assert second_result["post"].views == 20
+        assert second_result["post"].forwards == 2
+        assert count_posts(session) == 1
 
 
 def test_repository_stats_and_latest_posts() -> None:

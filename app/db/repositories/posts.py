@@ -20,6 +20,12 @@ class TelegramPostData(TypedDict, total=False):
     raw_json: str | None
 
 
+class SavePostResult(TypedDict):
+    post: TelegramPost
+    created: bool
+    updated: bool
+
+
 def post_exists(
     session: Session,
     source_channel_id: int,
@@ -38,9 +44,28 @@ def save_post(
     source_channel: SourceChannel,
     post_data: TelegramPostData,
 ) -> TelegramPost | None:
+    result = save_or_update_post(session, source_channel, post_data)
+    return result["post"] if result["created"] else None
+
+
+def save_or_update_post(
+    session: Session,
+    source_channel: SourceChannel,
+    post_data: TelegramPostData,
+) -> SavePostResult:
     telegram_message_id = int(post_data["telegram_message_id"])
-    if post_exists(session, source_channel.id, telegram_message_id):
-        return None
+    existing_post = session.scalar(
+        select(TelegramPost).where(
+            TelegramPost.source_channel_id == source_channel.id,
+            TelegramPost.telegram_message_id == telegram_message_id,
+        ),
+    )
+    if existing_post:
+        updated = _update_post_metrics(existing_post, post_data)
+        if updated:
+            session.commit()
+            session.refresh(existing_post)
+        return {"post": existing_post, "created": False, "updated": updated}
 
     text = normalize_text(post_data["text"])
     post = TelegramPost(
@@ -60,10 +85,28 @@ def save_post(
         session.commit()
     except IntegrityError:
         session.rollback()
-        return None
+        existing_post = session.scalar(
+            select(TelegramPost).where(
+                TelegramPost.source_channel_id == source_channel.id,
+                TelegramPost.telegram_message_id == telegram_message_id,
+            ),
+        )
+        if existing_post is None:
+            raise
+        return {"post": existing_post, "created": False, "updated": False}
 
     session.refresh(post)
-    return post
+    return {"post": post, "created": True, "updated": False}
+
+
+def _update_post_metrics(post: TelegramPost, post_data: TelegramPostData) -> bool:
+    updated = False
+    for field in ("views", "forwards", "raw_json"):
+        new_value = post_data.get(field)
+        if new_value is not None and getattr(post, field) != new_value:
+            setattr(post, field, new_value)
+            updated = True
+    return updated
 
 
 def count_posts(session: Session) -> int:
