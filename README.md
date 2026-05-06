@@ -271,6 +271,8 @@ python scripts/channels.py remove old_channel
 pytest
 ```
 
+Тесты также запускаются в GitHub Actions при пуше в `main`.
+
 Если используете `make`, основные команды доступны так:
 
 ```bash
