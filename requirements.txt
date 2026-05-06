@@ -1,5 +1,6 @@
 telethon
 python-socks
+openai
 python-dotenv
 pydantic
 pydantic-settings

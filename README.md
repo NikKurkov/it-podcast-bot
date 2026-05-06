@@ -324,3 +324,47 @@ make validate
 
 В репозитории есть `.editorconfig`, чтобы IDE держали единый стиль отступов и
 переводов строк.
+
+## Локальный LLM
+
+Рекомендуемая модель для текущего железа:
+
+```text
+qwen2.5:7b-instruct
+```
+
+Установите Ollama и скачайте модель:
+
+```bash
+# Arch/CachyOS:
+sudo pacman -S ollama
+
+ollama pull qwen2.5:7b-instruct
+```
+
+Настройки в `.env`:
+
+```dotenv
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_API_KEY=ollama
+LLM_MODEL=qwen2.5:7b-instruct
+```
+
+Проверить доступность локального LLM:
+
+```bash
+make llm-check
+```
+
+Сгенерировать сценарий через локальную модель:
+
+```bash
+make script
+make llm-script
+```
+
+Результат:
+
+```text
+data/episodes/latest_llm_script.md
+```

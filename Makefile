@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup test check collect daily stats sources list selected show rank csv digest script episode episodes unprocess validate backup channels
+.PHONY: setup test check collect daily stats sources list selected show rank csv digest script llm-check llm-script episode episodes unprocess validate backup channels
 
 setup:
 	python -m venv .venv
@@ -44,6 +44,12 @@ digest:
 
 script:
 	$(PYTHON) scripts/make_script_draft.py
+
+llm-check:
+	$(PYTHON) scripts/check_llm.py
+
+llm-script:
+	$(PYTHON) scripts/make_llm_script.py
 
 episode:
 	$(PYTHON) scripts/make_episode_draft.py --limit 10

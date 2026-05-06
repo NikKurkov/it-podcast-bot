@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import shutil
 import sys
 from pathlib import Path
 
@@ -42,6 +43,9 @@ def main() -> None:
     print(f"  telegram_proxy: {_format_proxy(proxy)}")
     print(f"  channels_file: {_format_path_status(channels_file)}")
     print(f"  exclude_keywords_file: {_format_path_status(exclude_keywords_file)}")
+    print(f"  ollama_binary: {'exists' if shutil.which('ollama') else 'missing'}")
+    print(f"  llm_base_url: {settings.llm_base_url}")
+    print(f"  llm_model: {settings.llm_model}")
     print(f"  channels: {len(channels)}")
     for channel in channels:
         print(f"    @{channel}")
@@ -82,6 +86,8 @@ def _build_warnings(channels: list[str], channels_file: Path) -> list[str]:
         warnings.append("No Telegram channels configured.")
     if not settings.telegram_channels and not channels_file.exists():
         warnings.append("TELEGRAM_CHANNELS is empty and TELEGRAM_CHANNELS_FILE does not exist.")
+    if "localhost:11434" in settings.llm_base_url and not shutil.which("ollama"):
+        warnings.append("Ollama is not installed or not available in PATH.")
     return warnings
 
 

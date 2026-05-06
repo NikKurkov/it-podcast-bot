@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     telegram_channels_file: str = Field(default="config/channels.txt", alias="TELEGRAM_CHANNELS_FILE")
     telegram_proxy_url: str | None = Field(default=None, alias="TELEGRAM_PROXY_URL")
     exclude_keywords_file: str = Field(default="config/exclude_keywords.txt", alias="EXCLUDE_KEYWORDS_FILE")
+    llm_base_url: str = Field(default="http://localhost:11434/v1", alias="LLM_BASE_URL")
+    llm_api_key: str = Field(default="ollama", alias="LLM_API_KEY")
+    llm_model: str = Field(default="qwen2.5:7b-instruct", alias="LLM_MODEL")
 
     model_config = SettingsConfigDict(
         env_file=".env",

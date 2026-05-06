@@ -49,7 +49,18 @@ python scripts/make_script_draft.py
 
 This is still a non-LLM workflow: it only structures manually selected posts.
 
-## 6. Create episode draft
+## 6. Local LLM rewrite
+
+```bash
+ollama pull qwen2.5:7b-instruct
+make llm-check
+make llm-script
+```
+
+The LLM reads `data/episodes/latest_script.md` and writes
+`data/episodes/latest_llm_script.md`.
+
+## 7. Create episode draft
 
 ```bash
 python scripts/make_episode_draft.py --use-exclude-keywords --limit 10
