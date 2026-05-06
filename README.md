@@ -287,3 +287,6 @@ make episode
 make episodes
 make validate
 ```
+
+В репозитории есть `.editorconfig`, чтобы IDE держали единый стиль отступов и
+переводов строк.
