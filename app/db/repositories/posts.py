@@ -140,6 +140,25 @@ def get_latest_posts(
     return list(session.scalars(statement).all())
 
 
+def get_post_by_id(session: Session, post_id: int) -> TelegramPost | None:
+    return session.get(TelegramPost, post_id)
+
+
+def get_post_by_source_message_id(
+    session: Session,
+    source_username: str,
+    telegram_message_id: int,
+) -> TelegramPost | None:
+    return session.scalar(
+        select(TelegramPost)
+        .join(TelegramPost.source_channel)
+        .where(
+            SourceChannel.username == source_username.strip().lstrip("@"),
+            TelegramPost.telegram_message_id == telegram_message_id,
+        ),
+    )
+
+
 def get_posts_for_digest(
     session: Session,
     limit: int = 50,

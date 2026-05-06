@@ -128,6 +128,13 @@ python scripts/list_posts.py --limit 10
 python scripts/list_posts.py --channel whackdoor --limit 10
 ```
 
+Полная запись поста:
+
+```bash
+python scripts/show_post.py --id 1
+python scripts/show_post.py --channel whackdoor --message-id 28245
+```
+
 Ранжирование постов простой эвристикой без LLM:
 
 ```bash
