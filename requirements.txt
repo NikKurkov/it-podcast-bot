@@ -1,0 +1,6 @@
+telethon
+python-dotenv
+pydantic
+pydantic-settings
+sqlalchemy
+pytest

@@ -1,0 +1,13 @@
+.env
+*.session
+*.session-journal
+data/*.sqlite3
+data/*.db
+data/sessions/
+data/logs/*.log
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+.idea/
+.vscode/
