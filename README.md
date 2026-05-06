@@ -152,6 +152,12 @@ python scripts/show_post.py --channel whackdoor --message-id 28245
 python scripts/rank_posts.py --limit 50 --top 10
 ```
 
+CSV-экспорт для ручного анализа:
+
+```bash
+python scripts/export_posts_csv.py --limit 100
+```
+
 ## Экспорт дайджеста без LLM
 
 Markdown:
@@ -261,6 +267,7 @@ make collect
 make stats
 make list
 make rank
+make csv
 make digest
 make episode
 make episodes

@@ -8,6 +8,7 @@ data/backups/
 data/logs/*.log
 data/episodes/*.md
 data/episodes/*.json
+data/raw/*.csv
 __pycache__/
 .pytest_cache/
 .venv/
