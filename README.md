@@ -116,6 +116,12 @@ python scripts/check_setup.py --telegram
 python scripts/db_stats.py
 ```
 
+Отчёт по источникам:
+
+```bash
+python scripts/source_report.py
+```
+
 Последние посты:
 
 ```bash

@@ -207,6 +207,34 @@ def count_posts_by_source(session: Session) -> list[tuple[str, str | None, int]]
     return [(username, title, count) for username, title, count in session.execute(statement).all()]
 
 
+def get_source_report(session: Session) -> list[dict[str, object]]:
+    statement = (
+        select(
+            SourceChannel.username,
+            SourceChannel.title,
+            func.count(TelegramPost.id).label("posts_count"),
+            func.max(TelegramPost.message_date).label("latest_message_date"),
+            func.avg(TelegramPost.views).label("avg_views"),
+            func.avg(TelegramPost.forwards).label("avg_forwards"),
+        )
+        .join(TelegramPost, TelegramPost.source_channel_id == SourceChannel.id, isouter=True)
+        .group_by(SourceChannel.id)
+        .order_by(SourceChannel.username)
+    )
+    return [
+        {
+            "username": username,
+            "title": title,
+            "posts_count": posts_count,
+            "latest_message_date": latest_message_date,
+            "avg_views": avg_views,
+            "avg_forwards": avg_forwards,
+        }
+        for username, title, posts_count, latest_message_date, avg_views, avg_forwards
+        in session.execute(statement).all()
+    ]
+
+
 def mark_posts_processed(session: Session, post_ids: list[int]) -> int:
     if not post_ids:
         return 0
