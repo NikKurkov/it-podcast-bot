@@ -8,6 +8,11 @@
 Telegram-каналов через пользовательский Telegram-аккаунт и сохранение в локальную
 SQLite-базу без дублей.
 
+Дополнительные заметки:
+
+- [MVP workflow](docs/mvp_workflow.md)
+- [Architecture](docs/architecture.md)
+
 ## Что уже есть
 
 - конфигурация через `.env`;

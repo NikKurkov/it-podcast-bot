@@ -1,0 +1,50 @@
+# MVP workflow
+
+## 1. Check setup
+
+```bash
+make check
+```
+
+Use `python scripts/check_setup.py --telegram` when you need to verify the saved
+Telegram session.
+
+## 2. Collect posts
+
+```bash
+make collect
+```
+
+The collector reads channels from `config/channels.txt`, stores text posts in
+SQLite, deduplicates by channel and Telegram message id, and refreshes metrics
+for already saved posts.
+
+## 3. Inspect data
+
+```bash
+make stats
+make sources
+make list
+make rank
+make validate
+```
+
+Use `scripts/show_post.py --id <id>` to inspect a single post.
+
+## 4. Export digest
+
+```bash
+python scripts/make_digest.py --use-exclude-keywords --ranked --limit 20
+```
+
+Exports go to `data/episodes/` and are ignored by git.
+
+## 5. Create episode draft
+
+```bash
+python scripts/make_episode_draft.py --use-exclude-keywords --limit 10
+python scripts/list_episode_drafts.py
+```
+
+Episode drafts are local structured snapshots. They do not use LLMs, audio, or
+publishing.
