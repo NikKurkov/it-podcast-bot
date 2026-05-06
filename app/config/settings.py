@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     default_limit_per_channel: int = Field(default=20, alias="DEFAULT_LIMIT_PER_CHANNEL")
     telegram_channels: str | None = Field(default=None, alias="TELEGRAM_CHANNELS")
+    telegram_channels_file: str = Field(default="config/channels.txt", alias="TELEGRAM_CHANNELS_FILE")
+    telegram_proxy_url: str | None = Field(default=None, alias="TELEGRAM_PROXY_URL")
 
     model_config = SettingsConfigDict(
         env_file=".env",

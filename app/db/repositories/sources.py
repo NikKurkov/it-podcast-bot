@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import SourceChannel
@@ -30,3 +30,7 @@ def get_or_create_source(
     session.commit()
     session.refresh(source)
     return source
+
+
+def count_sources(session: Session) -> int:
+    return session.scalar(select(func.count(SourceChannel.id))) or 0

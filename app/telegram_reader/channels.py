@@ -1,18 +1,37 @@
+from pathlib import Path
+
 from app.config.settings import settings
 
 
-CHANNELS = [
-    "durov",
-    "pythonetc",
-]
+def _clean_channel(value: str) -> str:
+    return value.strip().lstrip("@")
+
+
+def _parse_channels(value: str) -> list[str]:
+    channels: list[str] = []
+    for raw_line in value.splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+
+        for item in line.split(","):
+            channel = _clean_channel(item)
+            if channel:
+                channels.append(channel)
+
+    return channels
+
+
+def _read_channels_file(path: str) -> list[str]:
+    channels_path = Path(path)
+    if not channels_path.exists():
+        return []
+
+    return _parse_channels(channels_path.read_text(encoding="utf-8"))
 
 
 def get_channels() -> list[str]:
     if settings.telegram_channels:
-        return [
-            channel.strip().lstrip("@")
-            for channel in settings.telegram_channels.split(",")
-            if channel.strip()
-        ]
+        return _parse_channels(settings.telegram_channels)
 
-    return [channel.strip().lstrip("@") for channel in CHANNELS if channel.strip()]
+    return _read_channels_file(settings.telegram_channels_file)

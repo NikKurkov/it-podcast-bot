@@ -11,11 +11,12 @@ SQLite-базу без дублей.
 ## Что уже есть
 
 - конфигурация через `.env`;
-- список Telegram-каналов;
+- список Telegram-каналов в отдельном конфиг-файле;
 - Telethon-клиент с локальной сессией;
 - модели SQLAlchemy `SourceChannel` и `TelegramPost`;
 - SQLite-хранилище;
 - CLI-команда сбора постов;
+- CLI-команды просмотра базы и экспорта простого дайджеста;
 - минимальные тесты для нормализации текста и хэширования.
 
 ## Telegram API ID и API Hash
@@ -48,6 +49,19 @@ TELEGRAM_SESSION_NAME=it_podcast_bot
 DATABASE_URL=sqlite:///data/it_podcast_bot.sqlite3
 LOG_LEVEL=INFO
 DEFAULT_LIMIT_PER_CHANNEL=20
+TELEGRAM_CHANNELS_FILE=config/channels.txt
+```
+
+Если Telegram недоступен напрямую, можно указать SOCKS-прокси:
+
+```dotenv
+TELEGRAM_PROXY_URL=socks5://127.0.0.1:2080
+```
+
+Для прокси с авторизацией:
+
+```dotenv
+TELEGRAM_PROXY_URL=socks5://username:password@127.0.0.1:2080
 ```
 
 ## Запуск сбора постов
@@ -57,6 +71,11 @@ python scripts/collect_posts.py --limit 20
 ```
 
 Без `--limit` будет использовано значение `DEFAULT_LIMIT_PER_CHANNEL` из `.env`.
+Можно собрать один канал:
+
+```bash
+python scripts/collect_posts.py --channel whackdoor --limit 10
+```
 
 SQLite-база по умолчанию лежит здесь:
 
@@ -64,21 +83,55 @@ SQLite-база по умолчанию лежит здесь:
 data/it_podcast_bot.sqlite3
 ```
 
+## Просмотр базы
+
+Статистика:
+
+```bash
+python scripts/db_stats.py
+```
+
+Последние посты:
+
+```bash
+python scripts/list_posts.py --limit 10
+```
+
+Фильтр по каналу:
+
+```bash
+python scripts/list_posts.py --channel whackdoor --limit 10
+```
+
+## Экспорт дайджеста без LLM
+
+Markdown:
+
+```bash
+python scripts/make_digest.py --limit 50 --format markdown
+```
+
+JSON:
+
+```bash
+python scripts/make_digest.py --limit 50 --format json
+```
+
+По умолчанию файлы создаются в `data/episodes/`.
+
 ## Как поменять список каналов
 
 Основной список находится в:
 
 ```text
-app/telegram_reader/channels.py
+config/channels.txt
 ```
 
 Пример:
 
-```python
-CHANNELS = [
-    "durov",
-    "pythonetc",
-]
+```text
+durov
+pythonetc
 ```
 
 Можно также временно переопределить список через `.env`:

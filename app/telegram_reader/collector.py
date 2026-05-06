@@ -27,10 +27,13 @@ def _message_to_raw_json(message: Any) -> str | None:
         return None
 
 
-async def collect_latest_posts(limit_per_channel: int | None = None) -> dict[str, int]:
+async def collect_latest_posts(
+    limit_per_channel: int | None = None,
+    channels: list[str] | None = None,
+) -> dict[str, int]:
     init_db()
 
-    channels = get_channels()
+    channels = channels or get_channels()
     limit = limit_per_channel or settings.default_limit_per_channel
     stats = {
         "channels_total": len(channels),

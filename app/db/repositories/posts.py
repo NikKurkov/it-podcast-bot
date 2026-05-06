@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TypedDict
 
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -68,3 +68,60 @@ def save_post(
 
 def count_posts(session: Session) -> int:
     return session.scalar(select(func.count(TelegramPost.id))) or 0
+
+
+def count_unprocessed_posts(session: Session) -> int:
+    return session.scalar(
+        select(func.count(TelegramPost.id)).where(TelegramPost.is_processed.is_(False)),
+    ) or 0
+
+
+def count_sources(session: Session) -> int:
+    return session.scalar(select(func.count(SourceChannel.id))) or 0
+
+
+def get_latest_posts(
+    session: Session,
+    limit: int = 20,
+    source_username: str | None = None,
+) -> list[TelegramPost]:
+    statement = (
+        select(TelegramPost)
+        .join(TelegramPost.source_channel)
+        .order_by(desc(TelegramPost.message_date), desc(TelegramPost.id))
+        .limit(limit)
+    )
+    if source_username:
+        statement = statement.where(SourceChannel.username == source_username.strip().lstrip("@"))
+
+    return list(session.scalars(statement).all())
+
+
+def get_posts_for_digest(
+    session: Session,
+    limit: int = 50,
+    source_username: str | None = None,
+    only_unprocessed: bool = False,
+) -> list[TelegramPost]:
+    statement = (
+        select(TelegramPost)
+        .join(TelegramPost.source_channel)
+        .order_by(desc(TelegramPost.message_date), desc(TelegramPost.id))
+        .limit(limit)
+    )
+    if source_username:
+        statement = statement.where(SourceChannel.username == source_username.strip().lstrip("@"))
+    if only_unprocessed:
+        statement = statement.where(TelegramPost.is_processed.is_(False))
+
+    return list(session.scalars(statement).all())
+
+
+def count_posts_by_source(session: Session) -> list[tuple[str, str | None, int]]:
+    statement = (
+        select(SourceChannel.username, SourceChannel.title, func.count(TelegramPost.id))
+        .join(TelegramPost, TelegramPost.source_channel_id == SourceChannel.id, isouter=True)
+        .group_by(SourceChannel.id)
+        .order_by(SourceChannel.username)
+    )
+    return [(username, title, count) for username, title, count in session.execute(statement).all()]

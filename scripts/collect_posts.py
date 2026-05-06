@@ -19,6 +19,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="How many latest messages to read per channel.",
     )
+    parser.add_argument(
+        "--channel",
+        action="append",
+        default=None,
+        help="Collect only this channel. Can be passed multiple times.",
+    )
     return parser.parse_args()
 
 
@@ -31,7 +37,8 @@ def print_stats(stats: dict[str, int]) -> None:
 def main() -> None:
     args = parse_args()
     setup_logging()
-    stats = asyncio.run(collect_latest_posts(limit_per_channel=args.limit))
+    channels = [channel.strip().lstrip("@") for channel in args.channel] if args.channel else None
+    stats = asyncio.run(collect_latest_posts(limit_per_channel=args.limit, channels=channels))
     print_stats(stats)
 
 
