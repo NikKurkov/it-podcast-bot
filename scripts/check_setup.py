@@ -32,12 +32,16 @@ def main() -> None:
     channels = get_channels()
     proxy = _build_proxy()
     session_file = Path("data/sessions") / f"{settings.telegram_session_name}.session"
+    channels_file = Path(settings.telegram_channels_file)
+    exclude_keywords_file = Path(settings.exclude_keywords_file)
 
     print("Setup check:")
     print(f"  telegram_api_id: {'configured' if settings.telegram_api_id else 'missing'}")
     print(f"  telegram_api_hash: {'configured' if settings.telegram_api_hash else 'missing'}")
     print(f"  telegram_session_file: {'exists' if session_file.exists() else 'missing'}")
     print(f"  telegram_proxy: {_format_proxy(proxy)}")
+    print(f"  channels_file: {_format_path_status(channels_file)}")
+    print(f"  exclude_keywords_file: {_format_path_status(exclude_keywords_file)}")
     print(f"  channels: {len(channels)}")
     for channel in channels:
         print(f"    @{channel}")
@@ -51,6 +55,13 @@ def main() -> None:
         authorized = asyncio.run(_check_telegram_authorization())
         print(f"  telegram_authorized: {'yes' if authorized else 'no'}")
 
+    warnings = _build_warnings(channels, channels_file)
+    if warnings:
+        print("")
+        print("Warnings:")
+        for warning in warnings:
+            print(f"  - {warning}")
+
 
 def _format_proxy(proxy: tuple | None) -> str:
     if not proxy:
@@ -59,6 +70,19 @@ def _format_proxy(proxy: tuple | None) -> str:
     proxy_type, host, port, _, username, _ = proxy
     auth = " with auth" if username else ""
     return f"{proxy_type}://{host}:{port}{auth}"
+
+
+def _format_path_status(path: Path) -> str:
+    return f"{path} ({'exists' if path.exists() else 'missing'})"
+
+
+def _build_warnings(channels: list[str], channels_file: Path) -> list[str]:
+    warnings = []
+    if not channels:
+        warnings.append("No Telegram channels configured.")
+    if not settings.telegram_channels and not channels_file.exists():
+        warnings.append("TELEGRAM_CHANNELS is empty and TELEGRAM_CHANNELS_FILE does not exist.")
+    return warnings
 
 
 async def _check_telegram_authorization() -> bool:
