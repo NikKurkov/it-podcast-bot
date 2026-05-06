@@ -83,6 +83,12 @@ SQLite-база по умолчанию лежит здесь:
 data/it_podcast_bot.sqlite3
 ```
 
+Бэкап текущей SQLite-базы:
+
+```bash
+python scripts/backup_db.py
+```
+
 ## Просмотр базы
 
 Проверка локальной настройки:

@@ -4,6 +4,7 @@
 data/*.sqlite3
 data/*.db
 data/sessions/
+data/backups/
 data/logs/*.log
 data/episodes/*.md
 data/episodes/*.json
