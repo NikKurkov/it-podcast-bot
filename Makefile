@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup test check collect stats list rank digest validate backup channels
+.PHONY: setup test check collect stats list rank digest episode episodes validate backup channels
 
 setup:
 	python -m venv .venv
@@ -26,6 +26,12 @@ rank:
 
 digest:
 	$(PYTHON) scripts/make_digest.py --limit 50 --format markdown
+
+episode:
+	$(PYTHON) scripts/make_episode_draft.py --limit 10
+
+episodes:
+	$(PYTHON) scripts/list_episode_drafts.py
 
 validate:
 	$(PYTHON) scripts/validate_db.py

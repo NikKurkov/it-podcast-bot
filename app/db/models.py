@@ -58,3 +58,21 @@ class TelegramPost(Base):
     is_processed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     source_channel: Mapped[SourceChannel] = relationship(back_populates="posts")
+
+
+class EpisodeDraft(Base):
+    __tablename__ = "episode_drafts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="draft", nullable=False)
+    source_post_ids: Mapped[str] = mapped_column(Text, nullable=False)
+    markdown_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    json_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )

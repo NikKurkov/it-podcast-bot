@@ -173,6 +173,20 @@ python scripts/make_digest.py --ranked --limit 20
 
 По умолчанию файлы создаются в `data/episodes/`.
 
+## Черновик выпуска без LLM
+
+Создать локальный черновик выпуска из лучших постов:
+
+```bash
+python scripts/make_episode_draft.py --limit 10
+```
+
+Посмотреть созданные черновики:
+
+```bash
+python scripts/list_episode_drafts.py
+```
+
 ## Как поменять список каналов
 
 Основной список находится в:
@@ -217,5 +231,7 @@ make stats
 make list
 make rank
 make digest
+make episode
+make episodes
 make validate
 ```
