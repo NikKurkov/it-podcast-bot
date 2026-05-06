@@ -89,6 +89,12 @@ data/it_podcast_bot.sqlite3
 python scripts/backup_db.py
 ```
 
+Проверка качества данных:
+
+```bash
+python scripts/validate_db.py
+```
+
 ## Просмотр базы
 
 Проверка локальной настройки:
