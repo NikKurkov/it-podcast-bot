@@ -11,3 +11,9 @@ def test_parse_channels_supports_lines_commas_and_comments() -> None:
     )
 
     assert channels == ["durov", "pythonetc", "whackdoor"]
+
+
+def test_parse_channels_deduplicates_values() -> None:
+    channels = _parse_channels("@durov,durov\npythonetc\n@pythonetc")
+
+    assert channels == ["durov", "pythonetc"]

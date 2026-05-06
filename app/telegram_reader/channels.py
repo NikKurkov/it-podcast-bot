@@ -19,7 +19,7 @@ def _parse_channels(value: str) -> list[str]:
             if channel:
                 channels.append(channel)
 
-    return channels
+    return _deduplicate_channels(channels)
 
 
 def _read_channels_file(path: str) -> list[str]:
@@ -35,3 +35,15 @@ def get_channels() -> list[str]:
         return _parse_channels(settings.telegram_channels)
 
     return _read_channels_file(settings.telegram_channels_file)
+
+
+def _deduplicate_channels(channels: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for channel in channels:
+        if channel in seen:
+            continue
+        seen.add(channel)
+        result.append(channel)
+
+    return result

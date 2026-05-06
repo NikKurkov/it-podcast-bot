@@ -164,6 +164,14 @@ pythonetc
 TELEGRAM_CHANNELS=durov,pythonetc
 ```
 
+Список можно посмотреть и изменить командами:
+
+```bash
+python scripts/channels.py list
+python scripts/channels.py add new_channel
+python scripts/channels.py remove old_channel
+```
+
 ## Тесты
 
 ```bash
