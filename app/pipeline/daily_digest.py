@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from itertools import groupby
 
 from sqlalchemy.orm import Session
 
@@ -49,21 +50,21 @@ def export_digest_markdown(items: list[DigestItem], output_path: Path) -> None:
         "",
     ]
 
-    current_source: str | None = None
-    for item in items:
-        if item.source != current_source:
-            current_source = item.source
-            title = f" ({item.title})" if item.title else ""
-            lines.extend([f"## @{item.source}{title}", ""])
+    grouped_items = sorted(items, key=lambda item: (item.source, item.message_date), reverse=True)
+    for source, source_items in groupby(grouped_items, key=lambda item: item.source):
+        source_items = list(source_items)
+        title = f" ({source_items[0].title})" if source_items[0].title else ""
+        lines.extend([f"## @{source}{title}", ""])
 
-        date_text = item.message_date.isoformat(timespec="minutes")
-        metrics = _format_metrics(item)
-        lines.append(f"### {date_text}{metrics}")
-        lines.append("")
-        lines.append(item.text)
-        if item.url:
-            lines.extend(["", f"Link: {item.url}"])
-        lines.append("")
+        for item in source_items:
+            date_text = item.message_date.isoformat(timespec="minutes")
+            metrics = _format_metrics(item)
+            lines.append(f"### {date_text}{metrics}")
+            lines.append("")
+            lines.append(item.text)
+            if item.url:
+                lines.extend(["", f"Link: {item.url}"])
+            lines.append("")
 
     output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
 

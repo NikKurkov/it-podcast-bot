@@ -16,7 +16,10 @@ from app.utils.text import is_meaningful_text, normalize_text
 logger = logging.getLogger(__name__)
 
 
-def _message_url(channel_username: str, message_id: int) -> str:
+def _message_url(channel_username: str, message_id: int) -> str | None:
+    if "/" in channel_username or channel_username.startswith("+"):
+        return None
+
     return f"https://t.me/{channel_username.lstrip('@')}/{message_id}"
 
 
