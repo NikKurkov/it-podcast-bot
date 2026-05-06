@@ -35,6 +35,8 @@ def build_digest_items(
     min_forwards: int | None = None,
     contains: str | None = None,
     exclude: str | None = None,
+    only_selected: bool = False,
+    include_rejected: bool = False,
     ranked: bool = False,
 ) -> list[DigestItem]:
     posts = get_posts_for_digest(
@@ -48,6 +50,8 @@ def build_digest_items(
         min_forwards=min_forwards,
         contains=contains,
         exclude=exclude,
+        only_selected=only_selected,
+        include_rejected=include_rejected,
     )
     if ranked:
         posts = sorted(posts, key=score_post, reverse=True)

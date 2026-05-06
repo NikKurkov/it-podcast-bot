@@ -32,6 +32,12 @@ def main() -> None:
             .join(SourceChannel, SourceChannel.id == TelegramPost.source_channel_id, isouter=True)
             .where(SourceChannel.id.is_(None)),
         ) or 0
+        conflicting_editorial_state_count = session.scalar(
+            select(func.count(TelegramPost.id)).where(
+                TelegramPost.is_selected.is_(True),
+                TelegramPost.is_rejected.is_(True),
+            ),
+        ) or 0
         invalid_episode_count = 0
         missing_episode_file_count = 0
         for episode in session.scalars(select(EpisodeDraft)).all():
@@ -50,6 +56,7 @@ def main() -> None:
     print(f"  duplicate_message_keys: {len(duplicate_keys)}")
     print(f"  empty_text_posts: {empty_text_count}")
     print(f"  orphan_posts: {orphan_count}")
+    print(f"  conflicting_editorial_state_posts: {conflicting_editorial_state_count}")
     print(f"  invalid_episode_drafts: {invalid_episode_count}")
     print(f"  missing_episode_files: {missing_episode_file_count}")
 
@@ -57,6 +64,7 @@ def main() -> None:
         duplicate_keys
         or empty_text_count
         or orphan_count
+        or conflicting_editorial_state_count
         or invalid_episode_count
         or missing_episode_file_count
     ):

@@ -14,6 +14,8 @@ from app.db.repositories.posts import (
     mark_posts_unprocessed,
     save_post,
     save_or_update_post,
+    get_selected_posts,
+    update_editorial_state,
 )
 from app.db.repositories.sources import count_sources, get_or_create_source
 
@@ -155,6 +157,36 @@ def test_get_posts_for_digest_filters_by_metrics_and_text() -> None:
         )
 
         assert [post.telegram_message_id for post in posts] == [1]
+
+
+def test_update_editorial_state_selects_and_rejects_posts() -> None:
+    session_factory = _make_session_factory()
+    with session_factory() as session:
+        source = get_or_create_source(session, "durov")
+        post = save_post(
+            session,
+            source,
+            {
+                "telegram_message_id": 1,
+                "message_date": datetime(2026, 5, 6, tzinfo=timezone.utc),
+                "text": "Editorial post",
+            },
+        )
+
+        assert post is not None
+        assert update_editorial_state(
+            session,
+            [post.id],
+            selected=True,
+            category="top news",
+            editor_note="Strong opener",
+        ) == 1
+        selected_posts = get_selected_posts(session)
+        assert selected_posts[0].category == "top news"
+        assert selected_posts[0].editor_note == "Strong opener"
+
+        update_editorial_state(session, [post.id], rejected=True)
+        assert get_selected_posts(session) == []
 
 
 def _make_session_factory() -> sessionmaker:

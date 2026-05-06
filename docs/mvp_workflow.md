@@ -39,7 +39,17 @@ python scripts/make_digest.py --use-exclude-keywords --ranked --limit 20
 
 Exports go to `data/episodes/` and are ignored by git.
 
-## 5. Create episode draft
+## 5. Editorial selection
+
+```bash
+python scripts/edit_post.py --id 1 --select --category "top news" --note "Good opener"
+python scripts/list_selected_posts.py
+python scripts/make_script_draft.py
+```
+
+This is still a non-LLM workflow: it only structures manually selected posts.
+
+## 6. Create episode draft
 
 ```bash
 python scripts/make_episode_draft.py --use-exclude-keywords --limit 10

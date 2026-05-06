@@ -56,6 +56,10 @@ class TelegramPost(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     is_processed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_selected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_rejected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    editor_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     source_channel: Mapped[SourceChannel] = relationship(back_populates="posts")
 

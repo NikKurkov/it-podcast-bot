@@ -164,6 +164,32 @@ CSV-экспорт для ручного анализа:
 python scripts/export_posts_csv.py --limit 100
 ```
 
+## Редакторская разметка
+
+Выбрать пост для выпуска:
+
+```bash
+python scripts/edit_post.py --id 1 --select --category "top news" --note "Хорошо для вступления"
+```
+
+Отклонить пост:
+
+```bash
+python scripts/edit_post.py --id 2 --reject --note "Не IT"
+```
+
+Посмотреть выбранные посты:
+
+```bash
+python scripts/list_selected_posts.py
+```
+
+Сделать простой черновик сценария из выбранных постов:
+
+```bash
+python scripts/make_script_draft.py
+```
+
 ## Экспорт дайджеста без LLM
 
 Markdown:
@@ -212,6 +238,12 @@ python scripts/make_digest.py --ranked --limit 20
 
 ```bash
 python scripts/make_digest.py --use-exclude-keywords --ranked --limit 20
+```
+
+Экспортировать только выбранные редактором посты:
+
+```bash
+python scripts/make_digest.py --only-selected --ranked --limit 20
 ```
 
 По умолчанию файлы создаются в `data/episodes/`.
@@ -280,9 +312,11 @@ make test
 make collect
 make stats
 make list
+make selected
 make rank
 make csv
 make digest
+make script
 make episode
 make episodes
 make validate

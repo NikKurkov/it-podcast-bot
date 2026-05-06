@@ -37,6 +37,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--contains", default=None, help="Export posts containing this text.")
     parser.add_argument("--exclude", default=None, help="Skip posts containing this text.")
+    parser.add_argument("--only-selected", action="store_true", help="Export only editorially selected posts.")
+    parser.add_argument("--include-rejected", action="store_true", help="Allow rejected posts in export.")
     parser.add_argument(
         "--use-exclude-keywords",
         action="store_true",
@@ -85,6 +87,8 @@ def main() -> None:
             min_forwards=args.min_forwards,
             contains=args.contains,
             exclude=args.exclude,
+            only_selected=args.only_selected,
+            include_rejected=args.include_rejected,
             ranked=args.ranked,
         )
         if args.use_exclude_keywords:

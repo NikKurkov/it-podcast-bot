@@ -49,3 +49,15 @@ def _run_lightweight_migrations() -> None:
             connection.execute(
                 text("ALTER TABLE telegram_posts ADD COLUMN is_processed BOOLEAN NOT NULL DEFAULT 0"),
             )
+        if "is_selected" not in columns:
+            connection.execute(
+                text("ALTER TABLE telegram_posts ADD COLUMN is_selected BOOLEAN NOT NULL DEFAULT 0"),
+            )
+        if "is_rejected" not in columns:
+            connection.execute(
+                text("ALTER TABLE telegram_posts ADD COLUMN is_rejected BOOLEAN NOT NULL DEFAULT 0"),
+            )
+        if "category" not in columns:
+            connection.execute(text("ALTER TABLE telegram_posts ADD COLUMN category VARCHAR(100)"))
+        if "editor_note" not in columns:
+            connection.execute(text("ALTER TABLE telegram_posts ADD COLUMN editor_note TEXT"))

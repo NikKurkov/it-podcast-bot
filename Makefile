@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup test check collect daily stats sources list show rank csv digest episode episodes unprocess validate backup channels
+.PHONY: setup test check collect daily stats sources list selected show rank csv digest script episode episodes unprocess validate backup channels
 
 setup:
 	python -m venv .venv
@@ -27,6 +27,9 @@ sources:
 list:
 	$(PYTHON) scripts/list_posts.py --limit 10
 
+selected:
+	$(PYTHON) scripts/list_selected_posts.py
+
 show:
 	$(PYTHON) scripts/show_post.py --id 1
 
@@ -38,6 +41,9 @@ csv:
 
 digest:
 	$(PYTHON) scripts/make_digest.py --limit 50 --format markdown
+
+script:
+	$(PYTHON) scripts/make_script_draft.py
 
 episode:
 	$(PYTHON) scripts/make_episode_draft.py --limit 10

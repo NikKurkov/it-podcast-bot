@@ -3,7 +3,7 @@ from typing import TypedDict
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import SourceChannel, TelegramPost
 from app.utils.hashing import make_text_hash
@@ -170,6 +170,8 @@ def get_posts_for_digest(
     min_forwards: int | None = None,
     contains: str | None = None,
     exclude: str | None = None,
+    only_selected: bool = False,
+    include_rejected: bool = False,
 ) -> list[TelegramPost]:
     statement = (
         select(TelegramPost)
@@ -193,6 +195,10 @@ def get_posts_for_digest(
         statement = statement.where(TelegramPost.text.ilike(f"%{contains}%"))
     if exclude:
         statement = statement.where(TelegramPost.text.not_ilike(f"%{exclude}%"))
+    if only_selected:
+        statement = statement.where(TelegramPost.is_selected.is_(True))
+    if not include_rejected:
+        statement = statement.where(TelegramPost.is_rejected.is_(False))
 
     return list(session.scalars(statement).all())
 
@@ -258,3 +264,47 @@ def mark_posts_unprocessed(session: Session, post_ids: list[int] | None = None) 
         post.is_processed = False
     session.commit()
     return len(posts)
+
+
+def update_editorial_state(
+    session: Session,
+    post_ids: list[int],
+    *,
+    selected: bool | None = None,
+    rejected: bool | None = None,
+    category: str | None = None,
+    editor_note: str | None = None,
+) -> int:
+    if not post_ids:
+        return 0
+
+    posts = list(session.scalars(select(TelegramPost).where(TelegramPost.id.in_(post_ids))).all())
+    for post in posts:
+        if selected is not None:
+            post.is_selected = selected
+            if selected:
+                post.is_rejected = False
+        if rejected is not None:
+            post.is_rejected = rejected
+            if rejected:
+                post.is_selected = False
+        if category is not None:
+            post.category = category.strip() or None
+        if editor_note is not None:
+            post.editor_note = editor_note.strip() or None
+
+    session.commit()
+    return len(posts)
+
+
+def get_selected_posts(session: Session, limit: int = 50) -> list[TelegramPost]:
+    return list(
+        session.scalars(
+            select(TelegramPost)
+            .options(selectinload(TelegramPost.source_channel))
+            .join(TelegramPost.source_channel)
+            .where(TelegramPost.is_selected.is_(True), TelegramPost.is_rejected.is_(False))
+            .order_by(TelegramPost.category, desc(TelegramPost.message_date), desc(TelegramPost.id))
+            .limit(limit),
+        ).all(),
+    )

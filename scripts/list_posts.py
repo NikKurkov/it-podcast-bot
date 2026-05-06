@@ -30,11 +30,24 @@ def main() -> None:
         for post in posts:
             source = post.source_channel.username
             date_text = post.message_date.isoformat(timespec="minutes")
-            print(f"[{post.id}] @{source} #{post.telegram_message_id} {date_text}")
+            flags = _format_editorial_flags(post)
+            print(f"[{post.id}] @{source} #{post.telegram_message_id} {date_text}{flags}")
             print(f"  {shorten_text(post.text, max_length=220)}")
             if post.url:
                 print(f"  {post.url}")
             print("")
+
+
+def _format_editorial_flags(post) -> str:
+    flags = []
+    if post.is_selected:
+        flags.append("selected")
+    if post.is_rejected:
+        flags.append("rejected")
+    if post.category:
+        flags.append(post.category)
+
+    return f" [{' | '.join(flags)}]" if flags else ""
 
 
 if __name__ == "__main__":
