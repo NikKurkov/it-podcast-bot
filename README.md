@@ -189,3 +189,13 @@ python scripts/channels.py remove old_channel
 ```bash
 pytest
 ```
+
+Если используете `make`, основные команды доступны так:
+
+```bash
+make test
+make collect
+make stats
+make digest
+make validate
+```
