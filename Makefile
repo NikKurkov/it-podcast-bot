@@ -45,6 +45,9 @@ episode:
 episodes:
 	$(PYTHON) scripts/list_episode_drafts.py
 
+delete-episode:
+	$(PYTHON) scripts/delete_episode_draft.py 1 --keep-files
+
 unprocess:
 	$(PYTHON) scripts/mark_posts.py unprocessed --all
 

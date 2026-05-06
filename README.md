@@ -230,6 +230,12 @@ python scripts/make_episode_draft.py --limit 10
 python scripts/list_episode_drafts.py
 ```
 
+Удалить черновик выпуска:
+
+```bash
+python scripts/delete_episode_draft.py 1
+```
+
 ## Как поменять список каналов
 
 Основной список находится в:

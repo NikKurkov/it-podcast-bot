@@ -31,3 +31,17 @@ def get_latest_episode_drafts(session: Session, limit: int = 10) -> list[Episode
             select(EpisodeDraft).order_by(desc(EpisodeDraft.created_at), desc(EpisodeDraft.id)).limit(limit),
         ).all(),
     )
+
+
+def get_episode_draft(session: Session, episode_id: int) -> EpisodeDraft | None:
+    return session.get(EpisodeDraft, episode_id)
+
+
+def delete_episode_draft(session: Session, episode_id: int) -> EpisodeDraft | None:
+    episode = get_episode_draft(session, episode_id)
+    if episode is None:
+        return None
+
+    session.delete(episode)
+    session.commit()
+    return episode
