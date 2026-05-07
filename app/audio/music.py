@@ -59,10 +59,10 @@ def mix_background_music(
     music_volume: float = 0.16,
     sample_rate: int = 48000,
 ) -> Path:
-    if not shutil.which("ffmpeg"):
-        raise RuntimeError("ffmpeg is not installed or not available in PATH.")
     if not voice_path.exists():
         raise FileNotFoundError(f"Voice audio does not exist: {voice_path}")
+    if not shutil.which("ffmpeg"):
+        raise RuntimeError("ffmpeg is not installed or not available in PATH.")
     if music_volume < 0:
         raise ValueError("music_volume must be non-negative.")
 
