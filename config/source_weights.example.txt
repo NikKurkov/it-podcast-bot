@@ -1,0 +1,6 @@
+# Optional source weights for heuristic ranking.
+# Format: channel_username=weight
+# Values above 1.0 boost a source, values below 1.0 reduce it.
+xakep_ru=1.20
+data_secrets=1.10
+whackdoor=0.90

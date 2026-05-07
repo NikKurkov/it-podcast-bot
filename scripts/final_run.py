@@ -15,6 +15,7 @@ from app.db.session import SessionLocal, init_db
 from app.pipeline.episode_package import create_episode_package
 from app.pipeline.filters import contains_excluded_keyword, load_exclude_keywords
 from app.pipeline.scoring import rank_posts
+from app.pipeline.source_weights import load_source_weights
 from app.telegram_reader.collector import collect_latest_posts
 from app.utils.logger import setup_logging
 
@@ -96,7 +97,7 @@ def _auto_select_posts(session, pool_limit: int, top: int) -> int:
     update_editorial_state(session, [post.id for post in existing_posts], selected=False)
 
     posts = get_posts_for_digest(session, limit=pool_limit)
-    ranked_posts = rank_posts(posts)
+    ranked_posts = rank_posts(posts, source_weights=load_source_weights())
     keywords = load_exclude_keywords()
     ranked_posts = [
         ranked_post
@@ -118,12 +119,16 @@ def _auto_select_posts(session, pool_limit: int, top: int) -> int:
 
 def _build_editor_note(ranked_post) -> str:
     reasons = "; ".join(ranked_post.reasons[:3]) if ranked_post.reasons else "no strong reasons"
+    topics = f" Topics: {', '.join(ranked_post.topics)}." if ranked_post.topics else ""
     penalties = (
         f" Penalties: {'; '.join(ranked_post.penalties[:2])}."
         if ranked_post.penalties
         else ""
     )
-    return f"Auto-selected by final run score={ranked_post.score:.2f}. Reasons: {reasons}.{penalties}"
+    return (
+        f"Auto-selected by final run score={ranked_post.score:.2f}. "
+        f"Reasons: {reasons}.{topics}{penalties}"
+    )
 
 
 if __name__ == "__main__":

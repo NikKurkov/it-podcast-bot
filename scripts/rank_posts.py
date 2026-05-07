@@ -10,6 +10,7 @@ from app.db.repositories.posts import get_posts_for_digest
 from app.db.session import SessionLocal, init_db
 from app.pipeline.filters import contains_excluded_keyword, load_exclude_keywords
 from app.pipeline.scoring import rank_posts, score_post_breakdown
+from app.pipeline.source_weights import load_source_weights
 from app.utils.text import shorten_text
 
 
@@ -20,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--channel", default=None, help="Filter by channel username.")
     parser.add_argument("--only-unprocessed", action="store_true")
     parser.add_argument("--use-exclude-keywords", action="store_true", default=True)
+    parser.add_argument("--use-source-weights", action="store_true", default=True)
     parser.add_argument("--show-breakdown", action="store_true")
     return parser.parse_args()
 
@@ -41,7 +43,8 @@ def main() -> None:
                 for post in posts
                 if not contains_excluded_keyword(post.text, keywords)
             ]
-        ranked_posts = rank_posts(posts)[: args.top]
+        source_weights = load_source_weights() if args.use_source_weights else {}
+        ranked_posts = rank_posts(posts, source_weights=source_weights)[: args.top]
 
         if not ranked_posts:
             print("No posts found.")
@@ -56,8 +59,10 @@ def main() -> None:
                 print(f"   reasons: {', '.join(ranked_post.reasons)}")
             if ranked_post.penalties:
                 print(f"   penalties: {', '.join(ranked_post.penalties)}")
+            if ranked_post.topics:
+                print(f"   topics: {', '.join(ranked_post.topics)}")
             if args.show_breakdown:
-                breakdown = score_post_breakdown(post)
+                breakdown = score_post_breakdown(post, source_weights=source_weights)
                 print(
                     "   breakdown: "
                     f"engagement={breakdown.engagement:.2f}, "
@@ -65,6 +70,7 @@ def main() -> None:
                     f"length={breakdown.length:.2f}, "
                     f"it={breakdown.it_relevance:.2f}, "
                     f"investigation={breakdown.investigation_potential:.2f}, "
+                    f"source={breakdown.source_weight:.2f}, "
                     f"penalty={breakdown.penalty:.2f}",
                 )
             if post.url:

@@ -36,6 +36,7 @@ def main() -> None:
     session_file = Path("data/sessions") / f"{settings.telegram_session_name}.session"
     channels_file = Path(settings.telegram_channels_file)
     exclude_keywords_file = Path(settings.exclude_keywords_file)
+    source_weights_file = Path(settings.source_weights_file)
 
     print("Setup check:")
     print(f"  telegram_api_id: {'configured' if settings.telegram_api_id else 'missing'}")
@@ -44,6 +45,7 @@ def main() -> None:
     print(f"  telegram_proxy: {_format_proxy(proxy)}")
     print(f"  channels_file: {_format_path_status(channels_file)}")
     print(f"  exclude_keywords_file: {_format_path_status(exclude_keywords_file)}")
+    print(f"  source_weights_file: {_format_path_status(source_weights_file)}")
     print(f"  ollama_binary: {'exists' if shutil.which('ollama') else 'missing'}")
     print(f"  llm_base_url: {settings.llm_base_url}")
     print(f"  llm_model: {settings.llm_model}")

@@ -11,6 +11,7 @@ class RankedPost:
     score: float
     reasons: list[str]
     penalties: list[str]
+    topics: list[str]
 
 
 @dataclass(frozen=True)
@@ -21,7 +22,9 @@ class PostScoreBreakdown:
     length: float
     it_relevance: float
     investigation_potential: float
+    source_weight: float
     penalty: float
+    topics: list[str]
     reasons: list[str]
     penalties: list[str]
 
@@ -105,11 +108,73 @@ LOW_SIGNAL_KEYWORDS = {
     "шибари",
 }
 
+TOPIC_KEYWORDS = {
+    "ai": {
+        "ai",
+        "gpt",
+        "llm",
+        "claude",
+        "gemma",
+        "модел",
+        "нейросет",
+        "искусственн",
+        "агент",
+        "промпт",
+    },
+    "security": {
+        "cve",
+        "security",
+        "supply chain",
+        "атака",
+        "безопасност",
+        "взлом",
+        "инцидент",
+        "уязвимост",
+        "цепочк",
+    },
+    "devops": {
+        "ci",
+        "devops",
+        "docker",
+        "kubernetes",
+        "linux",
+        "observability",
+        "инфраструктур",
+        "наблюдаем",
+        "продакшен",
+        "сервер",
+    },
+    "tools": {
+        "api",
+        "github",
+        "obs",
+        "tool",
+        "инструмент",
+        "код",
+        "монтаж",
+        "таблиц",
+    },
+    "frontend": {
+        "css",
+        "frontend",
+        "react",
+        "ui",
+        "ux",
+        "веб",
+        "интерфейс",
+        "фронтенд",
+    },
+}
 
-def rank_posts(posts: list[TelegramPost], now: datetime | None = None) -> list[RankedPost]:
+
+def rank_posts(
+    posts: list[TelegramPost],
+    now: datetime | None = None,
+    source_weights: dict[str, float] | None = None,
+) -> list[RankedPost]:
     reference_time = now or datetime.now(timezone.utc)
     ranked_posts = [
-        _rank_post(post, now=reference_time)
+        _rank_post(post, now=reference_time, source_weights=source_weights or {})
         for post in posts
     ]
     return sorted(
@@ -119,12 +184,21 @@ def rank_posts(posts: list[TelegramPost], now: datetime | None = None) -> list[R
     )
 
 
-def score_post(post: TelegramPost, now: datetime | None = None) -> float:
-    return score_post_breakdown(post, now=now).total
+def score_post(
+    post: TelegramPost,
+    now: datetime | None = None,
+    source_weights: dict[str, float] | None = None,
+) -> float:
+    return score_post_breakdown(post, now=now, source_weights=source_weights).total
 
 
-def score_post_breakdown(post: TelegramPost, now: datetime | None = None) -> PostScoreBreakdown:
+def score_post_breakdown(
+    post: TelegramPost,
+    now: datetime | None = None,
+    source_weights: dict[str, float] | None = None,
+) -> PostScoreBreakdown:
     reference_time = now or datetime.now(timezone.utc)
+    source_weights = source_weights or {}
     engagement_score = _engagement_score(post)
     freshness_score = _freshness_score(post.message_date, reference_time)
     length_score = _length_score(post.text)
@@ -139,12 +213,15 @@ def score_post_breakdown(post: TelegramPost, now: datetime | None = None) -> Pos
         relevance_score=relevance_score,
         investigation_score=investigation_score,
     )
+    source_weight = _source_weight_score(post, source_weights)
+    topics = detect_topics(post.text)
     total = round(
         engagement_score
         + freshness_score
         + length_score
         + relevance_score
         + investigation_score
+        + source_weight
         - penalty_score,
         4,
     )
@@ -155,6 +232,12 @@ def score_post_breakdown(post: TelegramPost, now: datetime | None = None) -> Pos
         reasons.append("fresh")
     reasons.extend(relevance_reasons)
     reasons.extend(investigation_reasons)
+    if topics:
+        reasons.append(f"topics: {', '.join(topics)}")
+    if source_weight > 0:
+        reasons.append(f"source boost: +{source_weight:.2f}")
+    elif source_weight < 0:
+        penalties.append(f"source weight: {source_weight:.2f}")
 
     return PostScoreBreakdown(
         total=total,
@@ -163,20 +246,36 @@ def score_post_breakdown(post: TelegramPost, now: datetime | None = None) -> Pos
         length=round(length_score, 4),
         it_relevance=round(relevance_score, 4),
         investigation_potential=round(investigation_score, 4),
+        source_weight=round(source_weight, 4),
         penalty=round(penalty_score, 4),
+        topics=topics,
         reasons=_deduplicate(reasons),
         penalties=_deduplicate(penalties),
     )
 
 
-def _rank_post(post: TelegramPost, now: datetime) -> RankedPost:
-    breakdown = score_post_breakdown(post, now=now)
+def _rank_post(
+    post: TelegramPost,
+    now: datetime,
+    source_weights: dict[str, float],
+) -> RankedPost:
+    breakdown = score_post_breakdown(post, now=now, source_weights=source_weights)
     return RankedPost(
         post=post,
         score=breakdown.total,
         reasons=breakdown.reasons,
         penalties=breakdown.penalties,
+        topics=breakdown.topics,
     )
+
+
+def detect_topics(text: str) -> list[str]:
+    topics = []
+    normalized_text = text.casefold()
+    for topic, keywords in TOPIC_KEYWORDS.items():
+        if any(keyword in normalized_text for keyword in keywords):
+            topics.append(topic)
+    return topics
 
 
 def _engagement_score(post: TelegramPost) -> float:
@@ -213,6 +312,14 @@ def _keyword_score(text: str, keywords: set[str], max_score: float) -> tuple[flo
     score = min(max_score, 0.65 * len(matched_keywords))
     top_keywords = sorted(matched_keywords)[:4]
     return score, [f"keywords: {', '.join(top_keywords)}"]
+
+
+def _source_weight_score(post: TelegramPost, source_weights: dict[str, float]) -> float:
+    source_username = getattr(getattr(post, "source_channel", None), "username", None)
+    if not source_username:
+        return 0.0
+    weight = source_weights.get(source_username.casefold(), 1.0)
+    return max(-2.0, min(2.0, (weight - 1.0) * 4.0))
 
 
 def _penalty_score(

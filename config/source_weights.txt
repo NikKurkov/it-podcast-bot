@@ -1,0 +1,9 @@
+# Optional source weights for heuristic ranking.
+# Keep this file local to tune noisy or trusted channels.
+xakep_ru=1.20
+data_secrets=1.10
+DevOPSitsec=1.10
+Positive_Technologies=1.10
+positivelabs=1.10
+whackdoor=0.85
+denissexy=0.85

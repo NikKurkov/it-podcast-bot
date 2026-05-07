@@ -10,6 +10,7 @@ from app.db.repositories.posts import get_posts_for_digest, update_editorial_sta
 from app.db.session import SessionLocal, init_db
 from app.pipeline.filters import contains_excluded_keyword, load_exclude_keywords
 from app.pipeline.scoring import rank_posts
+from app.pipeline.source_weights import load_source_weights
 from app.utils.text import shorten_text
 
 
@@ -20,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--category", default="top news")
     parser.add_argument("--reset-existing", action="store_true")
     parser.add_argument("--use-exclude-keywords", action="store_true", default=True)
+    parser.add_argument("--use-source-weights", action="store_true", default=True)
     return parser.parse_args()
 
 
@@ -32,7 +34,8 @@ def main() -> None:
             update_editorial_state(session, [post.id for post in posts], selected=False)
 
         posts = get_posts_for_digest(session, limit=args.pool_limit)
-        ranked_posts = rank_posts(posts)
+        source_weights = load_source_weights() if args.use_source_weights else {}
+        ranked_posts = rank_posts(posts, source_weights=source_weights)
         if args.use_exclude_keywords:
             keywords = load_exclude_keywords()
             ranked_posts = [
@@ -69,12 +72,16 @@ def main() -> None:
 
 def _build_editor_note(ranked_post) -> str:
     reasons = "; ".join(ranked_post.reasons[:3]) if ranked_post.reasons else "no strong reasons"
+    topics = f" Topics: {', '.join(ranked_post.topics)}." if ranked_post.topics else ""
     penalties = (
         f" Penalties: {'; '.join(ranked_post.penalties[:2])}."
         if ranked_post.penalties
         else ""
     )
-    return f"Auto-selected by heuristic score={ranked_post.score:.2f}. Reasons: {reasons}.{penalties}"
+    return (
+        f"Auto-selected by heuristic score={ranked_post.score:.2f}. "
+        f"Reasons: {reasons}.{topics}{penalties}"
+    )
 
 
 if __name__ == "__main__":

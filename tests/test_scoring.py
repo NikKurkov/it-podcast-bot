@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from app.db.models import Base
 from app.db.repositories.posts import save_post
 from app.db.repositories.sources import get_or_create_source
-from app.pipeline.scoring import rank_posts, score_post, score_post_breakdown
+from app.pipeline.scoring import detect_topics, rank_posts, score_post, score_post_breakdown
 
 
 def test_score_post_prefers_posts_with_more_engagement() -> None:
@@ -149,6 +149,38 @@ def test_score_post_breakdown_penalizes_non_it_text() -> None:
 
         assert breakdown.penalty >= 4
         assert "no IT or investigation signals" in breakdown.penalties
+
+
+def test_score_post_breakdown_uses_source_weights() -> None:
+    session_factory = _make_session_factory()
+    now = datetime(2026, 5, 6, 12, tzinfo=timezone.utc)
+
+    with session_factory() as session:
+        source = get_or_create_source(session, "trusted")
+        post = save_post(
+            session,
+            source,
+            {
+                "telegram_message_id": 1,
+                "message_date": now,
+                "text": "Python API release for production infrastructure",
+                "views": 100,
+                "forwards": 5,
+            },
+        )
+
+        breakdown = score_post_breakdown(post, now=now, source_weights={"trusted": 1.25})
+
+        assert breakdown.source_weight == 1.0
+        assert "source boost: +1.00" in breakdown.reasons
+
+
+def test_detect_topics() -> None:
+    assert detect_topics("Claude LLM security incident in production infrastructure") == [
+        "ai",
+        "security",
+        "devops",
+    ]
 
 
 def _make_session_factory() -> sessionmaker:
