@@ -482,6 +482,18 @@ pip install -r requirements.txt
 от версии Python, CPU/GPU и платформы. Остальные лёгкие зависимости TTS уже в
 `requirements.txt`.
 
+На этой машине основной проект может жить в `.venv` на свежем Python, а Silero
+удобнее запускать из отдельного CPU-only окружения:
+
+```bash
+make setup-tts
+make tts-sample-silero
+```
+
+`make setup-tts` использует `uv`, ставит локальный Python 3.12 в кэш `uv`,
+создаёт `.venv-tts` внутри проекта и ставит CPU-сборку PyTorch. Это не трогает
+основной `.venv`.
+
 Тестовая многоголосая озвучка:
 
 ```bash

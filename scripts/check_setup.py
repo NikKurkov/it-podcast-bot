@@ -51,6 +51,7 @@ def main() -> None:
     print(f"  tts_output_dir: {settings.tts_output_dir}")
     print(f"  ffmpeg_binary: {'exists' if shutil.which('ffmpeg') else 'missing'}")
     print(f"  torch_module: {'exists' if importlib.util.find_spec('torch') else 'missing'}")
+    print(f"  tts_venv: {_format_tts_venv_status()}")
     print(f"  channels: {len(channels)}")
     for channel in channels:
         print(f"    @{channel}")
@@ -94,10 +95,20 @@ def _build_warnings(channels: list[str], channels_file: Path) -> list[str]:
     if "localhost:11434" in settings.llm_base_url and not shutil.which("ollama"):
         warnings.append("Ollama is not installed or not available in PATH.")
     if settings.tts_provider == "silero" and importlib.util.find_spec("torch") is None:
-        warnings.append("Silero TTS requires torch, but torch is not installed in this Python.")
+        warnings.append(
+            "Silero TTS requires torch in the runtime Python. "
+            "Use make setup-tts and make tts-sample-silero for the isolated TTS environment.",
+        )
     if not shutil.which("ffmpeg"):
         warnings.append("ffmpeg is required for podcast audio assembly.")
     return warnings
+
+
+def _format_tts_venv_status() -> str:
+    tts_python = Path(".venv-tts/bin/python")
+    if not tts_python.exists():
+        return "missing"
+    return f"{tts_python} (exists)"
 
 
 async def _check_telegram_authorization() -> bool:

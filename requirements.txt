@@ -3,6 +3,7 @@ python-socks
 openai
 numpy
 soundfile
+omegaconf
 python-dotenv
 pydantic
 pydantic-settings

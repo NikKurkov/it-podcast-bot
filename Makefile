@@ -1,10 +1,14 @@
 PYTHON := .venv/bin/python
+TTS_PYTHON := .venv-tts/bin/python
 
-.PHONY: setup test check collect daily final stats sources list selected auto-select show rank csv digest script ollama-cpu llm-check llm-script llm-script-fast llm-script-final audio tts-sample episode episodes episode-package unprocess validate backup channels
+.PHONY: setup setup-tts test check collect daily final stats sources list selected auto-select show rank csv digest script ollama-cpu llm-check llm-script llm-script-fast llm-script-final audio tts-sample tts-sample-silero episode episodes episode-package unprocess validate backup channels
 
 setup:
 	python -m venv .venv
 	$(PYTHON) -m pip install -r requirements.txt
+
+setup-tts:
+	bash scripts/setup_tts_env.sh
 
 test:
 	$(PYTHON) -m pytest
@@ -71,6 +75,9 @@ audio:
 
 tts-sample:
 	$(PYTHON) scripts/make_tts_sample.py
+
+tts-sample-silero:
+	$(TTS_PYTHON) scripts/make_tts_sample.py
 
 episode:
 	$(PYTHON) scripts/make_episode_draft.py --limit 10
