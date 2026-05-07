@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup test check collect daily stats sources list selected show rank csv digest script llm-check llm-script episode episodes unprocess validate backup channels
+.PHONY: setup test check collect daily stats sources list selected show rank csv digest script ollama-cpu llm-check llm-script episode episodes unprocess validate backup channels
 
 setup:
 	python -m venv .venv
@@ -44,6 +44,9 @@ digest:
 
 script:
 	$(PYTHON) scripts/make_script_draft.py
+
+ollama-cpu:
+	bash scripts/serve_ollama_cpu.sh
 
 llm-check:
 	$(PYTHON) scripts/check_llm.py

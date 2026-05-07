@@ -53,6 +53,7 @@ This is still a non-LLM workflow: it only structures manually selected posts.
 
 ```bash
 ollama pull qwen2.5:7b-instruct
+make ollama-cpu
 make llm-check
 make llm-script
 ```

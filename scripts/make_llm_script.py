@@ -2,7 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from openai import APIConnectionError
+from openai import APIConnectionError, InternalServerError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -40,6 +40,18 @@ def main() -> None:
             "Then retry:\n"
             "  make llm-script"
         ) from exc
+    except InternalServerError as exc:
+        message = str(exc)
+        if "architectural feature absent" in message or "CUDA error" in message:
+            raise SystemExit(
+                "Local LLM server failed inside CUDA.\n"
+                "On this machine GTX 1070 Ti can fail with current Ollama CUDA builds.\n\n"
+                "Run Ollama in CPU-only mode in a separate terminal:\n"
+                "  make ollama-cpu\n\n"
+                "Then retry:\n"
+                "  make llm-script"
+            ) from exc
+        raise
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(script_text + "\n", encoding="utf-8")
