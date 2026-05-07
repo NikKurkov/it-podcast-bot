@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import importlib.util
 import shutil
 import sys
 from pathlib import Path
@@ -46,6 +47,10 @@ def main() -> None:
     print(f"  ollama_binary: {'exists' if shutil.which('ollama') else 'missing'}")
     print(f"  llm_base_url: {settings.llm_base_url}")
     print(f"  llm_model: {settings.llm_model}")
+    print(f"  tts_provider: {settings.tts_provider}")
+    print(f"  tts_output_dir: {settings.tts_output_dir}")
+    print(f"  ffmpeg_binary: {'exists' if shutil.which('ffmpeg') else 'missing'}")
+    print(f"  torch_module: {'exists' if importlib.util.find_spec('torch') else 'missing'}")
     print(f"  channels: {len(channels)}")
     for channel in channels:
         print(f"    @{channel}")
@@ -88,6 +93,10 @@ def _build_warnings(channels: list[str], channels_file: Path) -> list[str]:
         warnings.append("TELEGRAM_CHANNELS is empty and TELEGRAM_CHANNELS_FILE does not exist.")
     if "localhost:11434" in settings.llm_base_url and not shutil.which("ollama"):
         warnings.append("Ollama is not installed or not available in PATH.")
+    if settings.tts_provider == "silero" and importlib.util.find_spec("torch") is None:
+        warnings.append("Silero TTS requires torch, but torch is not installed in this Python.")
+    if not shutil.which("ffmpeg"):
+        warnings.append("ffmpeg is required for podcast audio assembly.")
     return warnings
 
 

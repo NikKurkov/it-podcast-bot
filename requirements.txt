@@ -1,6 +1,8 @@
 telethon
 python-socks
 openai
+numpy
+soundfile
 python-dotenv
 pydantic
 pydantic-settings

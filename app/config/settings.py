@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     llm_final_model: str = Field(default="qwen2.5:7b-instruct", alias="LLM_FINAL_MODEL")
     tts_voice: str = Field(default="ru", alias="TTS_VOICE")
     tts_speed: int = Field(default=160, alias="TTS_SPEED")
+    tts_provider: str = Field(default="silero", alias="TTS_PROVIDER")
+    tts_output_dir: str = Field(default="data/audio", alias="TTS_OUTPUT_DIR")
+    tts_sample_rate: int = Field(default=48000, alias="TTS_SAMPLE_RATE")
+    tts_device: str = Field(default="cpu", alias="TTS_DEVICE")
 
     model_config = SettingsConfigDict(
         env_file=".env",

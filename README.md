@@ -436,9 +436,70 @@ data/episodes/YYYY-MM-DD_HHMMSS/
 └── metadata.json
 ```
 
-## Локальная озвучка
+## Локальная озвучка подкаста
 
-Для бесплатного MVP используется `espeak-ng`:
+Основной локальный TTS-провайдер для русской озвучки: Silero TTS.
+
+Персонажи:
+
+- `boris`: дотошный начальник, голос `aidar`;
+- `lena`: весёлая девушка-программистка, голос `xenia`;
+- `max`: IT-специалист широкого профиля, голос `eugene`;
+- `ilya`: глубокий технический эксперт, голос `aidar`.
+
+Голоса настраиваются в:
+
+```text
+app/audio/voices.py
+```
+
+Настройки `.env`:
+
+```dotenv
+TTS_PROVIDER=silero
+TTS_OUTPUT_DIR=data/audio
+TTS_SAMPLE_RATE=48000
+TTS_DEVICE=cpu
+```
+
+Проверить `ffmpeg`:
+
+```bash
+ffmpeg -version
+```
+
+Установить Python-зависимости:
+
+```bash
+pip install -r requirements.txt
+```
+
+Для реального Silero нужен PyTorch. Если `torch` недоступен для текущего Python,
+создайте отдельный Python 3.12 venv для TTS и установите PyTorch туда.
+При первом запуске Silero может скачать модель через `torch.hub`.
+
+`torch` намеренно не закреплён в `requirements.txt`, потому что сборка зависит
+от версии Python, CPU/GPU и платформы. Остальные лёгкие зависимости TTS уже в
+`requirements.txt`.
+
+Тестовая многоголосая озвучка:
+
+```bash
+python scripts/make_tts_sample.py
+```
+
+Результат:
+
+```text
+data/audio/sample_episode/001_boris.wav
+data/audio/sample_episode/002_lena.wav
+data/audio/sample_episode/003_max.wav
+data/audio/sample_episode/004_ilya.wav
+data/audio/sample_podcast.wav
+```
+
+В проекте также осталась простая legacy-озвучка через `espeak-ng` для быстрого
+роботизированного MP3 из `latest_llm_script.md`:
 
 ```bash
 make audio

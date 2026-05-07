@@ -4,6 +4,61 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from app.audio.models import DialogueLine, RenderedLine
+from app.audio.providers.base import BaseTTSProvider
+from app.audio.providers.piper import PiperTTSProvider
+from app.audio.providers.silero import SileroTTSProvider
+from app.audio.providers.xtts import XTTSTTSProvider
+from app.audio.voices import get_voice_config
+
+_PROVIDER_CACHE: dict[str, BaseTTSProvider] = {}
+
+
+def get_tts_provider(provider_name: str) -> BaseTTSProvider:
+    normalized_name = provider_name.strip().lower()
+    if normalized_name in _PROVIDER_CACHE:
+        return _PROVIDER_CACHE[normalized_name]
+
+    if normalized_name == "silero":
+        provider: BaseTTSProvider = SileroTTSProvider()
+    elif normalized_name == "piper":
+        provider = PiperTTSProvider()
+    elif normalized_name == "xtts":
+        provider = XTTSTTSProvider()
+    else:
+        raise ValueError("Unknown TTS provider: " f"{provider_name}. Supported: silero, piper, xtts")
+
+    _PROVIDER_CACHE[normalized_name] = provider
+    return provider
+
+
+async def synthesize_dialogue_lines(
+    lines: list[DialogueLine],
+    output_dir: Path,
+) -> list[RenderedLine]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    rendered_lines: list[RenderedLine] = []
+
+    for index, line in enumerate(lines, start=1):
+        voice_config = get_voice_config(line.speaker)
+        provider = get_tts_provider(voice_config["provider"])
+        audio_path = output_dir / f"{index:03d}_{line.speaker}.wav"
+        rendered_path = await provider.synthesize(
+            line.text,
+            speaker=voice_config["speaker"],
+            output_path=audio_path,
+            sample_rate=voice_config.get("sample_rate"),
+        )
+        rendered_lines.append(
+            RenderedLine(
+                speaker=line.speaker,
+                text=line.text,
+                audio_path=rendered_path,
+            ),
+        )
+
+    return rendered_lines
+
 
 def synthesize_with_espeak(
     text: str,

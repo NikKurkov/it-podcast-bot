@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup test check collect daily final stats sources list selected auto-select show rank csv digest script ollama-cpu llm-check llm-script llm-script-fast llm-script-final audio episode episodes episode-package unprocess validate backup channels
+.PHONY: setup test check collect daily final stats sources list selected auto-select show rank csv digest script ollama-cpu llm-check llm-script llm-script-fast llm-script-final audio tts-sample episode episodes episode-package unprocess validate backup channels
 
 setup:
 	python -m venv .venv
@@ -68,6 +68,9 @@ llm-script-final:
 
 audio:
 	$(PYTHON) scripts/make_audio.py
+
+tts-sample:
+	$(PYTHON) scripts/make_tts_sample.py
 
 episode:
 	$(PYTHON) scripts/make_episode_draft.py --limit 10
