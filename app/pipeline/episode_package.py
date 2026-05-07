@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import TelegramPost
 from app.db.repositories.posts import get_selected_posts
+from app.audio.tts import convert_wav_to_mp3, synthesize_with_espeak
 from app.llm.scriptwriter import model_for_profile, rewrite_script_draft
 from app.pipeline.daily_digest import (
     DigestItem,
@@ -23,6 +24,8 @@ class EpisodePackage:
     selected_posts_path: Path
     script_draft_path: Path
     llm_script_path: Path | None
+    audio_wav_path: Path | None
+    audio_mp3_path: Path | None
     metadata_path: Path
 
 
@@ -32,6 +35,9 @@ def create_episode_package(
     title: str | None = None,
     slug: str | None = None,
     llm_profile: str | None = None,
+    with_audio: bool = False,
+    tts_voice: str = "ru",
+    tts_speed: int = 160,
 ) -> EpisodePackage:
     package_title = title or f"IT podcast {datetime.now(timezone.utc).date().isoformat()}"
     package_path = Path("data/episodes") / _build_package_slug(slug)
@@ -44,6 +50,8 @@ def create_episode_package(
     selected_posts_path = package_path / "selected_posts.json"
     script_draft_path = package_path / "script_draft.md"
     llm_script_path = package_path / "llm_script.md" if llm_profile else None
+    audio_wav_path = package_path / "audio.wav" if with_audio else None
+    audio_mp3_path = package_path / "audio.mp3" if with_audio else None
     metadata_path = package_path / "metadata.json"
 
     export_digest_markdown(digest_items, digest_markdown_path)
@@ -59,6 +67,16 @@ def create_episode_package(
         )
         llm_script_path.write_text(llm_text + "\n", encoding="utf-8")
 
+    if with_audio:
+        audio_source_path = llm_script_path if llm_script_path and llm_script_path.exists() else script_draft_path
+        synthesize_with_espeak(
+            audio_source_path.read_text(encoding="utf-8"),
+            audio_wav_path,
+            voice=tts_voice,
+            speed=tts_speed,
+        )
+        convert_wav_to_mp3(audio_wav_path, audio_mp3_path)
+
     metadata = {
         "title": package_title,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -71,6 +89,8 @@ def create_episode_package(
             "selected_posts": str(selected_posts_path),
             "script_draft": str(script_draft_path),
             "llm_script": str(llm_script_path) if llm_script_path else None,
+            "audio_wav": str(audio_wav_path) if audio_wav_path else None,
+            "audio_mp3": str(audio_mp3_path) if audio_mp3_path else None,
         },
     }
     metadata_path.write_text(
@@ -84,6 +104,8 @@ def create_episode_package(
         selected_posts_path=selected_posts_path,
         script_draft_path=script_draft_path,
         llm_script_path=llm_script_path,
+        audio_wav_path=audio_wav_path,
+        audio_mp3_path=audio_mp3_path,
         metadata_path=metadata_path,
     )
 

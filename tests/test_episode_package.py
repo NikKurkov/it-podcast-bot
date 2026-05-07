@@ -40,6 +40,7 @@ def test_create_episode_package_without_llm(tmp_path, monkeypatch) -> None:
     assert package.selected_posts_path.exists()
     assert package.script_draft_path.exists()
     assert package.metadata_path.exists()
+    assert package.audio_mp3_path is None
     assert "Selected package story" in package.script_draft_path.read_text(encoding="utf-8")
 
 

@@ -399,6 +399,12 @@ python scripts/make_episode_package.py --limit 10
 python scripts/make_episode_package.py --limit 10 --llm-profile final
 ```
 
+С локальной озвучкой:
+
+```bash
+python scripts/make_episode_package.py --limit 10 --llm-profile final --with-audio
+```
+
 Структура:
 
 ```text
@@ -407,5 +413,28 @@ data/episodes/YYYY-MM-DD_HHMMSS/
 ├── selected_posts.json
 ├── script_draft.md
 ├── llm_script.md
+├── audio.wav
+├── audio.mp3
 └── metadata.json
+```
+
+## Локальная озвучка
+
+Для бесплатного MVP используется `espeak-ng`:
+
+```bash
+make audio
+```
+
+Вход:
+
+```text
+data/episodes/latest_llm_script.md
+```
+
+Результат:
+
+```text
+data/audio/latest_episode.wav
+data/audio/latest_episode.mp3
 ```

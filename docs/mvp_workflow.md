@@ -70,7 +70,16 @@ python scripts/make_episode_package.py --limit 10 --llm-profile final
 
 Packages are stored in `data/episodes/<timestamp>/`.
 
-## 8. Create legacy episode draft
+## 8. Local TTS
+
+```bash
+make audio
+```
+
+This reads `data/episodes/latest_llm_script.md` and writes local WAV/MP3 files
+to `data/audio/`.
+
+## 9. Create legacy episode draft
 
 ```bash
 python scripts/make_episode_draft.py --use-exclude-keywords --limit 10

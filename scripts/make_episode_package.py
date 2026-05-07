@@ -9,6 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.db.session import SessionLocal, init_db
+from app.config.settings import settings
 from app.pipeline.episode_package import create_episode_package
 
 
@@ -23,6 +24,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Also generate llm_script.md with the selected model profile.",
     )
+    parser.add_argument("--with-audio", action="store_true", help="Also create audio.wav and audio.mp3.")
     return parser.parse_args()
 
 
@@ -37,6 +39,9 @@ def main() -> None:
                 title=args.title,
                 slug=args.slug,
                 llm_profile=args.llm_profile,
+                with_audio=args.with_audio,
+                tts_voice=settings.tts_voice,
+                tts_speed=settings.tts_speed,
             )
     except APIConnectionError as exc:
         raise SystemExit(
@@ -56,6 +61,8 @@ def main() -> None:
     print(f"  script_draft: {package.script_draft_path}")
     if package.llm_script_path:
         print(f"  llm_script: {package.llm_script_path}")
+    if package.audio_mp3_path:
+        print(f"  audio_mp3: {package.audio_mp3_path}")
     print(f"  metadata: {package.metadata_path}")
 
 

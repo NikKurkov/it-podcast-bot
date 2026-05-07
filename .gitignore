@@ -9,6 +9,8 @@ data/logs/*.log
 data/episodes/*.md
 data/episodes/*.json
 data/raw/*.csv
+data/audio/*.wav
+data/audio/*.mp3
 __pycache__/
 .pytest_cache/
 .venv/

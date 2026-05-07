@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="qwen2.5:7b-instruct", alias="LLM_MODEL")
     llm_fast_model: str = Field(default="qwen2.5:3b-instruct", alias="LLM_FAST_MODEL")
     llm_final_model: str = Field(default="qwen2.5:7b-instruct", alias="LLM_FINAL_MODEL")
+    tts_voice: str = Field(default="ru", alias="TTS_VOICE")
+    tts_speed: int = Field(default=160, alias="TTS_SPEED")
 
     model_config = SettingsConfigDict(
         env_file=".env",
