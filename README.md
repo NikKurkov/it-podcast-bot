@@ -108,6 +108,12 @@ make setup-tts
 make final-silero
 ```
 
+С LLM-сценарием, Silero-озвучкой и chill-подложкой:
+
+```bash
+make final-silero-llm-music
+```
+
 С LLM-сценарием:
 
 ```bash
@@ -567,6 +573,19 @@ make audio-silero-music
 Подложка генерируется локально через `ffmpeg`, без внешних треков и без
 лицензионных зависимостей. Громкость регулируется через
 `AUDIO_BACKGROUND_MUSIC_VOLUME` или аргумент `--music-volume`.
+
+Если есть свой loop-файл, его можно указать так:
+
+```bash
+.venv-tts/bin/python scripts/make_audio.py --provider silero --with-music --music-path data/audio/music/chill_loop.wav
+```
+
+Или через `.env`:
+
+```dotenv
+AUDIO_BACKGROUND_MUSIC=true
+AUDIO_BACKGROUND_MUSIC_PATH=data/audio/music/chill_loop.wav
+```
 
 Результат:
 

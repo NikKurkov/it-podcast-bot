@@ -35,6 +35,7 @@ class EpisodePackage:
     llm_script_path: Path | None
     audio_wav_path: Path | None
     audio_mp3_path: Path | None
+    audio_voice_wav_path: Path | None
     metadata_path: Path
 
 
@@ -51,6 +52,7 @@ def create_episode_package(
     tts_speed: int = 160,
     with_music: bool = False,
     music_volume: float | None = None,
+    music_path: Path | None = None,
 ) -> EpisodePackage:
     package_title = title or f"IT podcast {datetime.now(timezone.utc).date().isoformat()}"
     package_path = Path("data/episodes") / _build_package_slug(slug)
@@ -65,6 +67,7 @@ def create_episode_package(
     llm_script_path = package_path / "llm_script.md" if llm_profile else None
     audio_wav_path = package_path / "audio.wav" if with_audio else None
     audio_mp3_path = package_path / "audio.mp3" if with_audio else None
+    audio_voice_wav_path = package_path / "audio_voice.wav" if with_audio and with_music else None
     metadata_path = package_path / "metadata.json"
 
     export_digest_markdown(digest_items, digest_markdown_path)
@@ -107,11 +110,12 @@ def create_episode_package(
         else:
             raise ValueError(f"Unsupported episode audio provider: {provider_name}")
         if with_music:
-            clean_voice_path = audio_wav_path.with_name("audio_voice.wav")
-            audio_wav_path.replace(clean_voice_path)
+            clean_voice_path = audio_voice_wav_path
+            audio_wav_path.replace(audio_voice_wav_path)
             mix_background_music(
                 clean_voice_path,
                 audio_wav_path,
+                music_path=music_path,
                 music_volume=music_volume or settings.audio_background_music_volume,
                 sample_rate=settings.tts_sample_rate,
             )
@@ -127,6 +131,10 @@ def create_episode_package(
         "dialogue_script": dialogue_script,
         "tts_provider": (tts_provider or settings.tts_provider) if with_audio else None,
         "background_music": with_music if with_audio else None,
+        "background_music_volume": (music_volume or settings.audio_background_music_volume)
+        if with_audio and with_music
+        else None,
+        "background_music_path": str(music_path) if with_audio and with_music and music_path else None,
         "files": {
             "digest_markdown": str(digest_markdown_path),
             "selected_posts": str(selected_posts_path),
@@ -134,6 +142,7 @@ def create_episode_package(
             "llm_script": str(llm_script_path) if llm_script_path else None,
             "audio_wav": str(audio_wav_path) if audio_wav_path else None,
             "audio_mp3": str(audio_mp3_path) if audio_mp3_path else None,
+            "audio_voice_wav": str(audio_voice_wav_path) if audio_voice_wav_path else None,
         },
     }
     metadata_path.write_text(
@@ -149,6 +158,7 @@ def create_episode_package(
         llm_script_path=llm_script_path,
         audio_wav_path=audio_wav_path,
         audio_mp3_path=audio_mp3_path,
+        audio_voice_wav_path=audio_voice_wav_path,
         metadata_path=metadata_path,
     )
 

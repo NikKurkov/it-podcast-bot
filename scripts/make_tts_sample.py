@@ -57,6 +57,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lines-dir", default="data/audio/sample_episode")
     parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
     parser.add_argument("--music-volume", type=float, default=settings.audio_background_music_volume)
+    parser.add_argument("--music-path", default=settings.audio_background_music_path)
     parser.add_argument("--no-assemble", action="store_true")
     return parser.parse_args()
 
@@ -97,6 +98,7 @@ def main() -> None:
         output_path = mix_background_music(
             clean_voice_path,
             Path(args.output),
+            music_path=Path(args.music_path) if args.music_path else None,
             music_volume=args.music_volume,
             sample_rate=settings.tts_sample_rate,
         )

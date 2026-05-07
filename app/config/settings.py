@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     tts_device: str = Field(default="cpu", alias="TTS_DEVICE")
     audio_background_music: bool = Field(default=False, alias="AUDIO_BACKGROUND_MUSIC")
     audio_background_music_volume: float = Field(default=0.16, alias="AUDIO_BACKGROUND_MUSIC_VOLUME")
+    audio_background_music_path: str | None = Field(default=None, alias="AUDIO_BACKGROUND_MUSIC_PATH")
 
     model_config = SettingsConfigDict(
         env_file=".env",

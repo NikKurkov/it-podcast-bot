@@ -1,7 +1,7 @@
 PYTHON := .venv/bin/python
 TTS_PYTHON := .venv-tts/bin/python
 
-.PHONY: setup setup-tts test check collect daily final final-silero final-silero-llm stats sources list selected auto-select show rank csv digest script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music tts-sample tts-sample-silero episode episodes episode-package episode-package-silero unprocess validate backup channels
+.PHONY: setup setup-tts test check collect daily final final-silero final-silero-llm final-silero-llm-music stats sources list selected auto-select show rank csv digest script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music tts-sample tts-sample-silero episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels
 
 setup:
 	python -m venv .venv
@@ -30,6 +30,9 @@ final-silero:
 
 final-silero-llm:
 	$(TTS_PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --dialogue-script --with-audio --tts-provider silero
+
+final-silero-llm-music:
+	$(TTS_PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --dialogue-script --with-audio --tts-provider silero --with-music
 
 stats:
 	$(PYTHON) scripts/db_stats.py
@@ -102,6 +105,9 @@ episode-package:
 
 episode-package-silero:
 	$(TTS_PYTHON) scripts/make_episode_package.py --limit 10 --llm-profile final --dialogue-script --with-audio --tts-provider silero
+
+episode-package-silero-music:
+	$(TTS_PYTHON) scripts/make_episode_package.py --limit 10 --llm-profile final --dialogue-script --with-audio --tts-provider silero --with-music
 
 episodes:
 	$(PYTHON) scripts/list_episode_drafts.py

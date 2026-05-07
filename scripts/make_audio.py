@@ -25,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--speed", type=int, default=settings.tts_speed)
     parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
     parser.add_argument("--music-volume", type=float, default=settings.audio_background_music_volume)
+    parser.add_argument("--music-path", default=settings.audio_background_music_path)
     parser.add_argument("--no-mp3", action="store_true")
     return parser.parse_args()
 
@@ -70,6 +71,7 @@ def main() -> None:
         wav_path = mix_background_music(
             clean_voice_path,
             music_output_path,
+            music_path=Path(args.music_path) if args.music_path else None,
             music_volume=args.music_volume,
             sample_rate=settings.tts_sample_rate,
         )

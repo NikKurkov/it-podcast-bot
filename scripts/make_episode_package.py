@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tts-provider", choices=("silero", "espeak"), default=settings.tts_provider)
     parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
     parser.add_argument("--music-volume", type=float, default=settings.audio_background_music_volume)
+    parser.add_argument("--music-path", default=settings.audio_background_music_path)
     parser.add_argument(
         "--dialogue-script",
         action="store_true",
@@ -54,6 +55,7 @@ def main() -> None:
                 tts_speed=settings.tts_speed,
                 with_music=args.with_music,
                 music_volume=args.music_volume,
+                music_path=Path(args.music_path) if args.music_path else None,
             )
     except APIConnectionError as exc:
         raise SystemExit(
