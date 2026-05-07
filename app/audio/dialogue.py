@@ -5,6 +5,7 @@ from app.audio.voices import get_supported_characters, get_voice_config
 
 _SPEAKER_RE = re.compile(r"^(?P<speaker>[a-zA-Z_][\w-]*)\s*[:：]\s*(?P<text>.*)$")
 _ROUND_ROBIN_SPEAKERS = ["boris", "lena", "max", "ilya"]
+_MAX_LINE_CHARS = 450
 
 
 def script_to_dialogue_lines(script_text: str) -> list[DialogueLine]:
@@ -14,16 +15,19 @@ def script_to_dialogue_lines(script_text: str) -> list[DialogueLine]:
 
     paragraphs = _markdown_to_paragraphs(script_text)
     lines = []
-    for index, paragraph in enumerate(paragraphs):
-        speaker = _ROUND_ROBIN_SPEAKERS[index % len(_ROUND_ROBIN_SPEAKERS)]
-        voice_config = get_voice_config(speaker)
-        lines.append(
-            DialogueLine(
-                speaker=speaker,
-                text=paragraph,
-                pause_after_ms=voice_config.get("pause_after_ms", 500),
-            ),
-        )
+    speaker_index = 0
+    for paragraph in paragraphs:
+        for chunk in _split_long_text(paragraph, max_chars=_MAX_LINE_CHARS):
+            speaker = _ROUND_ROBIN_SPEAKERS[speaker_index % len(_ROUND_ROBIN_SPEAKERS)]
+            speaker_index += 1
+            voice_config = get_voice_config(speaker)
+            lines.append(
+                DialogueLine(
+                    speaker=speaker,
+                    text=chunk,
+                    pause_after_ms=voice_config.get("pause_after_ms", 500),
+                ),
+            )
     return lines
 
 
@@ -91,6 +95,10 @@ def _markdown_to_paragraphs(markdown: str) -> list[str]:
             _flush_paragraph(paragraphs, current_parts)
             current_parts = []
             continue
+        if _is_service_line(line):
+            _flush_paragraph(paragraphs, current_parts)
+            current_parts = []
+            continue
         if re.fullmatch(r"\[.*?]", line):
             continue
 
@@ -112,5 +120,50 @@ def _clean_speech_text(text: str) -> str:
     text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
     text = re.sub(r"\[(.*?)\]\((.*?)\)", r"\1", text)
     text = re.sub(r"https?://\S+", "", text)
+    text = re.sub(r"[@#]\S+", "", text)
+    text = re.sub(r"[^\w\sА-Яа-яЁё.,!?;:()«»\"'\\-]", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def _is_service_line(line: str) -> bool:
+    lowered = line.lower()
+    return lowered.startswith(("generated at:", "editor note:", "source:"))
+
+
+def _split_long_text(text: str, max_chars: int) -> list[str]:
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks = []
+    current = ""
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        if not sentence:
+            continue
+        if len(sentence) > max_chars:
+            chunks.extend(_split_by_words(sentence, max_chars))
+            current = ""
+            continue
+        if current and len(current) + 1 + len(sentence) > max_chars:
+            chunks.append(current)
+            current = sentence
+        else:
+            current = f"{current} {sentence}".strip()
+
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _split_by_words(text: str, max_chars: int) -> list[str]:
+    chunks = []
+    current = ""
+    for word in text.split():
+        if current and len(current) + 1 + len(word) > max_chars:
+            chunks.append(current)
+            current = word
+        else:
+            current = f"{current} {word}".strip()
+    if current:
+        chunks.append(current)
+    return chunks

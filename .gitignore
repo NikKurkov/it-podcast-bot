@@ -6,8 +6,7 @@ data/*.db
 data/sessions/
 data/backups/
 data/logs/*.log
-data/episodes/*.md
-data/episodes/*.json
+data/episodes/**
 data/raw/*.csv
 data/audio/**/*.wav
 data/audio/**/*.mp3
