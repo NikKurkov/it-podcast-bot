@@ -18,6 +18,7 @@ from app.llm.scriptwriter import (
     rewrite_dialogue_script_draft,
     rewrite_script_draft,
 )
+from app.podcast.script_validation import validate_dialogue_script
 from app.pipeline.daily_digest import (
     DigestItem,
     export_digest_json,
@@ -75,11 +76,24 @@ def create_episode_package(
     export_script_markdown(posts, script_draft_path, package_title)
 
     llm_model = None
+    script_validation_issues = []
     if llm_profile:
         llm_model = model_for_profile(llm_profile)
         draft_text = script_draft_path.read_text(encoding="utf-8")
         if dialogue_script:
             llm_text = rewrite_dialogue_script_draft(draft_text, model=llm_model)
+            validation = validate_dialogue_script(llm_text)
+            script_validation_issues = [
+                {
+                    "severity": issue.severity,
+                    "message": issue.message,
+                    "line_number": issue.line_number,
+                }
+                for issue in validation.issues
+            ]
+            if validation.has_errors:
+                messages = "; ".join(issue.message for issue in validation.issues)
+                raise RuntimeError(f"Generated dialogue script failed validation: {messages}")
         else:
             llm_text = rewrite_script_draft(draft_text, model=llm_model)
         llm_script_path.write_text(llm_text + "\n", encoding="utf-8")
@@ -129,6 +143,7 @@ def create_episode_package(
         "llm_profile": llm_profile,
         "llm_model": llm_model,
         "dialogue_script": dialogue_script,
+        "script_validation_issues": script_validation_issues,
         "tts_provider": (tts_provider or settings.tts_provider) if with_audio else None,
         "background_music": with_music if with_audio else None,
         "background_music_volume": (music_volume or settings.audio_background_music_volume)

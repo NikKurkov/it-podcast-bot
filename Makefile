@@ -1,7 +1,7 @@
 PYTHON := .venv/bin/python
 TTS_PYTHON := .venv-tts/bin/python
 
-.PHONY: setup setup-tts test check collect daily final final-silero final-silero-llm final-silero-llm-music stats sources list selected auto-select show rank csv digest script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music tts-sample tts-sample-silero episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels
+.PHONY: setup setup-tts test check collect daily final final-silero final-silero-llm final-silero-llm-music stats sources list selected auto-select show rank csv digest script validate-script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music tts-sample tts-sample-silero episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels
 
 setup:
 	python -m venv .venv
@@ -63,6 +63,9 @@ digest:
 
 script:
 	$(PYTHON) scripts/make_script_draft.py
+
+validate-script:
+	$(PYTHON) scripts/validate_script.py
 
 ollama-cpu:
 	bash scripts/serve_ollama_cpu.sh

@@ -408,6 +408,12 @@ make llm-script
 make llm-dialogue-script
 ```
 
+Проверить, что LLM-сценарий готов для многоголосой озвучки:
+
+```bash
+make validate-script
+```
+
 Быстрый и финальный профили:
 
 ```bash

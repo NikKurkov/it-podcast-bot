@@ -14,6 +14,7 @@ from app.llm.scriptwriter import (
     rewrite_dialogue_script_draft,
     rewrite_script_draft,
 )
+from app.podcast.script_validation import format_validation_report, validate_dialogue_script
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,6 +33,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Generate a four-character dialogue script for multi-voice TTS.",
     )
+    parser.add_argument("--no-validate", action="store_true")
     return parser.parse_args()
 
 
@@ -75,6 +77,12 @@ def main() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(script_text + "\n", encoding="utf-8")
     print(f"Saved LLM script to {output_path}")
+
+    if args.dialogue and not args.no_validate:
+        validation = validate_dialogue_script(script_text)
+        print(format_validation_report(validation))
+        if validation.has_errors:
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":
