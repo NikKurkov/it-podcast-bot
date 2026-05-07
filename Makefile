@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup test check collect daily stats sources list selected show rank csv digest script ollama-cpu llm-check llm-script llm-script-fast llm-script-final audio episode episodes episode-package unprocess validate backup channels
+.PHONY: setup test check collect daily final stats sources list selected auto-select show rank csv digest script ollama-cpu llm-check llm-script llm-script-fast llm-script-final audio episode episodes episode-package unprocess validate backup channels
 
 setup:
 	python -m venv .venv
@@ -18,6 +18,9 @@ collect:
 daily:
 	$(PYTHON) scripts/daily_run.py --collect-limit 20 --digest-limit 10
 
+final:
+	$(PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --with-audio
+
 stats:
 	$(PYTHON) scripts/db_stats.py
 
@@ -29,6 +32,9 @@ list:
 
 selected:
 	$(PYTHON) scripts/list_selected_posts.py
+
+auto-select:
+	$(PYTHON) scripts/auto_select_posts.py --top 5 --reset-existing
 
 show:
 	$(PYTHON) scripts/show_post.py --id 1

@@ -95,6 +95,18 @@ data/it_podcast_bot.sqlite3
 python scripts/daily_run.py --collect-limit 20 --digest-limit 10
 ```
 
+Полный локальный выпуск одной командой:
+
+```bash
+python scripts/final_run.py --collect-limit 20 --top 5 --with-audio
+```
+
+С LLM-сценарием:
+
+```bash
+python scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --with-audio
+```
+
 Бэкап текущей SQLite-базы:
 
 ```bash
@@ -182,6 +194,12 @@ python scripts/edit_post.py --id 2 --reject --note "Не IT"
 
 ```bash
 python scripts/list_selected_posts.py
+```
+
+Автоматически выбрать топ постов:
+
+```bash
+python scripts/auto_select_posts.py --top 5 --reset-existing
 ```
 
 Сделать простой черновик сценария из выбранных постов:
