@@ -2,9 +2,10 @@ import re
 
 from app.audio.models import DialogueLine
 from app.audio.voices import get_supported_characters, get_voice_config
+from app.podcast.characters import get_character_keys, resolve_character_key
 
-_SPEAKER_RE = re.compile(r"^(?P<speaker>[a-zA-Z_][\w-]*)\s*[:：]\s*(?P<text>.*)$")
-_ROUND_ROBIN_SPEAKERS = ["boris", "lena", "max", "ilya"]
+_SPEAKER_RE = re.compile(r"^(?P<speaker>[\wА-Яа-яЁё-]+)\s*[:：]\s*(?P<text>.*)$")
+_ROUND_ROBIN_SPEAKERS = get_character_keys()
 _MAX_LINE_CHARS = 450
 
 
@@ -46,9 +47,9 @@ def _parse_explicit_dialogue(script_text: str) -> list[DialogueLine]:
             continue
 
         match = _SPEAKER_RE.match(line)
-        if match and match.group("speaker").lower() in supported:
+        if match and _is_supported_speaker(match.group("speaker"), supported):
             _flush_dialogue_line(lines, current_speaker, current_text)
-            current_speaker = match.group("speaker").lower()
+            current_speaker = resolve_character_key(match.group("speaker"))
             current_text = [match.group("text").strip()]
             continue
 
@@ -129,6 +130,13 @@ def _clean_speech_text(text: str) -> str:
 def _is_service_line(line: str) -> bool:
     lowered = line.lower()
     return lowered.startswith(("generated at:", "editor note:", "source:"))
+
+
+def _is_supported_speaker(value: str, supported: set[str]) -> bool:
+    try:
+        return resolve_character_key(value) in supported
+    except ValueError:
+        return False
 
 
 def _split_long_text(text: str, max_chars: int) -> list[str]:

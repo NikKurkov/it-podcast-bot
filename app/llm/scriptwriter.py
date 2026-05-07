@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.config.settings import settings
 from app.llm.client import create_llm_client
+from app.podcast.prompt_context import build_scriptwriter_context
 
 
 DEFAULT_SYSTEM_PROMPT = """Ты сценарист русскоязычного IT-подкаста.
@@ -67,14 +68,18 @@ def model_for_profile(profile: str) -> str:
 def _load_system_prompt() -> str:
     prompt_path = Path("app/llm/prompts/scriptwriter.md")
     if prompt_path.exists() and prompt_path.read_text(encoding="utf-8").strip():
-        return prompt_path.read_text(encoding="utf-8").strip()
+        return _render_prompt_template(prompt_path.read_text(encoding="utf-8").strip())
 
-    return DEFAULT_SYSTEM_PROMPT
+    return _render_prompt_template(DEFAULT_SYSTEM_PROMPT)
 
 
 def _load_dialogue_system_prompt() -> str:
     prompt_path = Path("app/llm/prompts/dialogue_scriptwriter.md")
     if prompt_path.exists() and prompt_path.read_text(encoding="utf-8").strip():
-        return prompt_path.read_text(encoding="utf-8").strip()
+        return _render_prompt_template(prompt_path.read_text(encoding="utf-8").strip())
 
-    return DEFAULT_SYSTEM_PROMPT
+    return _render_prompt_template(DEFAULT_SYSTEM_PROMPT)
+
+
+def _render_prompt_template(prompt: str) -> str:
+    return prompt.format(**build_scriptwriter_context())

@@ -10,6 +10,7 @@ from app.audio.providers.piper import PiperTTSProvider
 from app.audio.providers.silero import SileroTTSProvider
 from app.audio.providers.xtts import XTTSTTSProvider
 from app.audio.voices import get_voice_config
+from app.podcast.characters import resolve_character_key
 
 _PROVIDER_CACHE: dict[str, BaseTTSProvider] = {}
 
@@ -40,9 +41,10 @@ async def synthesize_dialogue_lines(
     rendered_lines: list[RenderedLine] = []
 
     for index, line in enumerate(lines, start=1):
-        voice_config = get_voice_config(line.speaker)
+        character_key = resolve_character_key(line.speaker)
+        voice_config = get_voice_config(character_key)
         provider = get_tts_provider(voice_config["provider"])
-        audio_path = output_dir / f"{index:03d}_{line.speaker}.wav"
+        audio_path = output_dir / f"{index:03d}_{character_key}.wav"
         rendered_path = await provider.synthesize(
             line.text,
             speaker=voice_config["speaker"],
@@ -51,7 +53,7 @@ async def synthesize_dialogue_lines(
         )
         rendered_lines.append(
             RenderedLine(
-                speaker=line.speaker,
+                speaker=character_key,
                 text=line.text,
                 audio_path=rendered_path,
             ),

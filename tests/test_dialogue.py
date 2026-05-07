@@ -4,13 +4,13 @@ from app.audio.dialogue import script_to_dialogue_lines
 def test_script_to_dialogue_lines_parses_explicit_speakers() -> None:
     lines = script_to_dialogue_lines(
         """
-boris: Коллеги, начнём.
-lena: Отлично, я готова.
-max: Давайте разберём контекст.
+mark: Коллеги, начнём.
+nika: Отлично, я готова.
+artem: Давайте разберём контекст.
 """,
     )
 
-    assert [line.speaker for line in lines] == ["boris", "lena", "max"]
+    assert [line.speaker for line in lines] == ["mark", "nika", "artem"]
     assert lines[0].text == "Коллеги, начнём."
 
 
@@ -27,8 +27,20 @@ def test_script_to_dialogue_lines_falls_back_to_round_robin_markdown() -> None:
 """,
     )
 
-    assert [line.speaker for line in lines] == ["boris", "lena"]
+    assert [line.speaker for line in lines] == ["mark", "gleb"]
     assert lines[1].text == "Второй абзац с акцентом."
+
+
+def test_script_to_dialogue_lines_parses_russian_speaker_names() -> None:
+    lines = script_to_dialogue_lines(
+        """
+Марк: Давайте восстановим цепочку событий.
+Ника: А если по-человечески?
+Артём: Важна воспроизводимость сборки.
+""",
+    )
+
+    assert [line.speaker for line in lines] == ["mark", "nika", "artem"]
 
 
 def test_script_to_dialogue_lines_skips_service_lines_and_cleans_symbols() -> None:

@@ -453,17 +453,38 @@ data/episodes/YYYY-MM-DD_HHMMSS/
 
 Основной локальный TTS-провайдер для русской озвучки: Silero TTS.
 
-Персонажи:
+## Персонажи подкаста
 
-- `boris`: дотошный начальник, голос `aidar`;
-- `lena`: весёлая девушка-программистка, голос `xenia`;
-- `max`: IT-специалист широкого профиля, голос `eugene`;
-- `ilya`: глубокий технический эксперт, голос `aidar`.
+Формат выпуска: разговорное техно-расследование на 4 голоса.
 
-Голоса настраиваются в:
+| character_key | имя | роль | голос Silero | функция |
+| --- | --- | --- | --- | --- |
+| `mark` | Марк | Следователь / ведущий-аналитик | `eugene` | держит структуру, восстанавливает цепочку событий, делает выводы |
+| `gleb` | Глеб | Старый Хакер | `aidar` | снижает хайп, добавляет инженерный скепсис и сухой юмор |
+| `nika` | Ника | Деврел / объясняющая ведущая | `xenia` | задаёт человеческие вопросы, объясняет сложное проще, добавляет живость |
+| `artem` | Артём | Архитектор | `aidar` | объясняет механику, риски, эксплуатацию и последствия для production |
+
+## Как поменять персонажей или голоса
+
+Профили персонажей лежат в:
+
+```text
+app/podcast/characters.py
+```
+
+В одном месте настроены роль, характер, стиль речи, примеры фраз, TTS-провайдер,
+голос Silero и паузы после реплик.
+
+Маппинг голосов для аудио строится из этих профилей в:
 
 ```text
 app/audio/voices.py
+```
+
+Тестовый сценарий для локальной озвучки лежит в:
+
+```text
+scripts/make_tts_sample.py
 ```
 
 Настройки `.env`:
@@ -516,10 +537,10 @@ python scripts/make_tts_sample.py
 Результат:
 
 ```text
-data/audio/sample_episode/001_boris.wav
-data/audio/sample_episode/002_lena.wav
-data/audio/sample_episode/003_max.wav
-data/audio/sample_episode/004_ilya.wav
+data/audio/sample_episode/001_mark.wav
+data/audio/sample_episode/002_nika.wav
+data/audio/sample_episode/003_gleb.wav
+data/audio/sample_episode/004_artem.wav
 data/audio/sample_podcast.wav
 ```
 

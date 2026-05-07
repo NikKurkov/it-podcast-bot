@@ -45,7 +45,8 @@ def test_rewrite_dialogue_script_draft_uses_dialogue_prompt(monkeypatch) -> None
 
     assert result == "Готовый сценарий"
     system_prompt = fake_client.chat.completions.kwargs["messages"][0]["content"]
-    assert "boris" in system_prompt
-    assert "lena" in system_prompt
-    assert "max" in system_prompt
-    assert "ilya" in system_prompt
+    assert "mark" in system_prompt
+    assert "gleb" in system_prompt
+    assert "nika" in system_prompt
+    assert "artem" in system_prompt
+    assert "Марк" in system_prompt
