@@ -183,6 +183,12 @@ python scripts/show_post.py --channel whackdoor --message-id 28245
 python scripts/rank_posts.py --limit 50 --top 10
 ```
 
+Показать объяснение score:
+
+```bash
+python scripts/rank_posts.py --limit 50 --top 10 --show-breakdown
+```
+
 CSV-экспорт для ручного анализа:
 
 ```bash
@@ -214,6 +220,10 @@ python scripts/list_selected_posts.py
 ```bash
 python scripts/auto_select_posts.py --top 5 --reset-existing
 ```
+
+Auto-select использует объяснимую эвристику: вовлечённость, свежесть, длину,
+IT-релевантность, расследовательский потенциал и штрафы за рекламный или
+низкосигнальный текст. Причины выбора записываются в `editor_note`.
 
 Сделать простой черновик сценария из выбранных постов:
 

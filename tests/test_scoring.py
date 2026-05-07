@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from app.db.models import Base
 from app.db.repositories.posts import save_post
 from app.db.repositories.sources import get_or_create_source
-from app.pipeline.scoring import rank_posts, score_post
+from app.pipeline.scoring import rank_posts, score_post, score_post_breakdown
 
 
 def test_score_post_prefers_posts_with_more_engagement() -> None:
@@ -76,6 +76,79 @@ def test_rank_posts_orders_by_score() -> None:
         assert fresh_post is not None
         ranked_posts = rank_posts([older_post, fresh_post], now=now)
         assert ranked_posts[0].post.telegram_message_id == 2
+
+
+def test_score_post_breakdown_rewards_it_relevance() -> None:
+    session_factory = _make_session_factory()
+    now = datetime(2026, 5, 6, 12, tzinfo=timezone.utc)
+
+    with session_factory() as session:
+        source = get_or_create_source(session, "xakep_ru")
+        post = save_post(
+            session,
+            source,
+            {
+                "telegram_message_id": 1,
+                "message_date": now,
+                "text": "Security release fixes Python API vulnerability in production infrastructure",
+                "views": 100,
+                "forwards": 5,
+            },
+        )
+
+        breakdown = score_post_breakdown(post, now=now)
+
+        assert breakdown.it_relevance > 0
+        assert breakdown.investigation_potential > 0
+        assert breakdown.reasons
+
+
+def test_score_post_breakdown_penalizes_low_signal_wording() -> None:
+    session_factory = _make_session_factory()
+    now = datetime(2026, 5, 6, 12, tzinfo=timezone.utc)
+
+    with session_factory() as session:
+        source = get_or_create_source(session, "promo")
+        post = save_post(
+            session,
+            source,
+            {
+                "telegram_message_id": 1,
+                "message_date": now,
+                "text": "Срочно забираем скидку, жми тут и сохраняем себе",
+                "views": 100,
+                "forwards": 5,
+            },
+        )
+
+        breakdown = score_post_breakdown(post, now=now)
+
+        assert breakdown.penalty > 0
+        assert breakdown.penalties
+
+
+def test_score_post_breakdown_penalizes_non_it_text() -> None:
+    session_factory = _make_session_factory()
+    now = datetime(2026, 5, 6, 12, tzinfo=timezone.utc)
+
+    with session_factory() as session:
+        source = get_or_create_source(session, "general")
+        post = save_post(
+            session,
+            source,
+            {
+                "telegram_message_id": 1,
+                "message_date": now,
+                "text": "Большой трейлер нового фильма выходит летом",
+                "views": 100,
+                "forwards": 5,
+            },
+        )
+
+        breakdown = score_post_breakdown(post, now=now)
+
+        assert breakdown.penalty >= 4
+        assert "no IT or investigation signals" in breakdown.penalties
 
 
 def _make_session_factory() -> sessionmaker:

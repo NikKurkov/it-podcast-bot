@@ -8,7 +8,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.db.repositories.posts import get_posts_for_digest, update_editorial_state
 from app.db.session import SessionLocal, init_db
-from app.pipeline.filters import filter_excluded_items, load_exclude_keywords
+from app.pipeline.filters import contains_excluded_keyword, load_exclude_keywords
 from app.pipeline.scoring import rank_posts
 from app.utils.text import shorten_text
 
@@ -32,18 +32,25 @@ def main() -> None:
             update_editorial_state(session, [post.id for post in posts], selected=False)
 
         posts = get_posts_for_digest(session, limit=args.pool_limit)
-        ranked_posts = [ranked_post.post for ranked_post in rank_posts(posts)]
+        ranked_posts = rank_posts(posts)
         if args.use_exclude_keywords:
-            ranked_posts = filter_excluded_items(ranked_posts, load_exclude_keywords())
+            keywords = load_exclude_keywords()
+            ranked_posts = [
+                ranked_post
+                for ranked_post in ranked_posts
+                if not contains_excluded_keyword(ranked_post.post.text, keywords)
+            ]
 
-        selected_posts = ranked_posts[: args.top]
-        update_editorial_state(
-            session,
-            [post.id for post in selected_posts],
-            selected=True,
-            category=args.category,
-            editor_note="Auto-selected by heuristic score",
-        )
+        selected_ranked_posts = ranked_posts[: args.top]
+        selected_posts = [ranked_post.post for ranked_post in selected_ranked_posts]
+        for ranked_post in selected_ranked_posts:
+            update_editorial_state(
+                session,
+                [ranked_post.post.id],
+                selected=True,
+                category=args.category,
+                editor_note=_build_editor_note(ranked_post),
+            )
         output_rows = [
             (
                 post.id,
@@ -58,6 +65,16 @@ def main() -> None:
     for post_id, source, message_id, text in output_rows:
         print(f"  [{post_id}] @{source} #{message_id}")
         print(f"    {text}")
+
+
+def _build_editor_note(ranked_post) -> str:
+    reasons = "; ".join(ranked_post.reasons[:3]) if ranked_post.reasons else "no strong reasons"
+    penalties = (
+        f" Penalties: {'; '.join(ranked_post.penalties[:2])}."
+        if ranked_post.penalties
+        else ""
+    )
+    return f"Auto-selected by heuristic score={ranked_post.score:.2f}. Reasons: {reasons}.{penalties}"
 
 
 if __name__ == "__main__":

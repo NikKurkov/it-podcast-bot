@@ -13,7 +13,7 @@ from app.config.settings import settings
 from app.db.repositories.posts import get_posts_for_digest, update_editorial_state
 from app.db.session import SessionLocal, init_db
 from app.pipeline.episode_package import create_episode_package
-from app.pipeline.filters import filter_excluded_items, load_exclude_keywords
+from app.pipeline.filters import contains_excluded_keyword, load_exclude_keywords
 from app.pipeline.scoring import rank_posts
 from app.telegram_reader.collector import collect_latest_posts
 from app.utils.logger import setup_logging
@@ -96,17 +96,34 @@ def _auto_select_posts(session, pool_limit: int, top: int) -> int:
     update_editorial_state(session, [post.id for post in existing_posts], selected=False)
 
     posts = get_posts_for_digest(session, limit=pool_limit)
-    ranked_posts = [ranked_post.post for ranked_post in rank_posts(posts)]
-    ranked_posts = filter_excluded_items(ranked_posts, load_exclude_keywords())
-    selected_posts = ranked_posts[:top]
-    update_editorial_state(
-        session,
-        [post.id for post in selected_posts],
-        selected=True,
-        category="top news",
-        editor_note="Auto-selected by final run",
-    )
+    ranked_posts = rank_posts(posts)
+    keywords = load_exclude_keywords()
+    ranked_posts = [
+        ranked_post
+        for ranked_post in ranked_posts
+        if not contains_excluded_keyword(ranked_post.post.text, keywords)
+    ]
+    selected_ranked_posts = ranked_posts[:top]
+    selected_posts = [ranked_post.post for ranked_post in selected_ranked_posts]
+    for ranked_post in selected_ranked_posts:
+        update_editorial_state(
+            session,
+            [ranked_post.post.id],
+            selected=True,
+            category="top news",
+            editor_note=_build_editor_note(ranked_post),
+        )
     return len(selected_posts)
+
+
+def _build_editor_note(ranked_post) -> str:
+    reasons = "; ".join(ranked_post.reasons[:3]) if ranked_post.reasons else "no strong reasons"
+    penalties = (
+        f" Penalties: {'; '.join(ranked_post.penalties[:2])}."
+        if ranked_post.penalties
+        else ""
+    )
+    return f"Auto-selected by final run score={ranked_post.score:.2f}. Reasons: {reasons}.{penalties}"
 
 
 if __name__ == "__main__":
