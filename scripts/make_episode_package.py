@@ -25,6 +25,7 @@ def parse_args() -> argparse.Namespace:
         help="Also generate llm_script.md with the selected model profile.",
     )
     parser.add_argument("--with-audio", action="store_true", help="Also create audio.wav and audio.mp3.")
+    parser.add_argument("--tts-provider", choices=("silero", "espeak"), default=settings.tts_provider)
     return parser.parse_args()
 
 
@@ -40,6 +41,7 @@ def main() -> None:
                 slug=args.slug,
                 llm_profile=args.llm_profile,
                 with_audio=args.with_audio,
+                tts_provider=args.tts_provider,
                 tts_voice=settings.tts_voice,
                 tts_speed=settings.tts_speed,
             )

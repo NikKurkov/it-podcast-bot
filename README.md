@@ -101,6 +101,13 @@ python scripts/daily_run.py --collect-limit 20 --digest-limit 10
 python scripts/final_run.py --collect-limit 20 --top 5 --with-audio
 ```
 
+С Silero-озвучкой через отдельное TTS-окружение:
+
+```bash
+make setup-tts
+make final-silero
+```
+
 С LLM-сценарием:
 
 ```bash
@@ -420,7 +427,8 @@ python scripts/make_episode_package.py --limit 10 --llm-profile final
 С локальной озвучкой:
 
 ```bash
-python scripts/make_episode_package.py --limit 10 --llm-profile final --with-audio
+python scripts/make_episode_package.py --limit 10 --llm-profile final --with-audio --tts-provider espeak
+make episode-package-silero
 ```
 
 Структура:

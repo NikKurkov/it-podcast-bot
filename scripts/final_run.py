@@ -26,6 +26,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top", type=int, default=5)
     parser.add_argument("--llm-profile", choices=("default", "fast", "final"), default=None)
     parser.add_argument("--with-audio", action="store_true")
+    parser.add_argument("--tts-provider", choices=("silero", "espeak"), default=settings.tts_provider)
+    parser.add_argument("--no-collect", action="store_true", help="Skip Telegram collection step.")
     parser.add_argument("--slug", default=None)
     return parser.parse_args()
 
@@ -35,7 +37,17 @@ def main() -> None:
     setup_logging()
     init_db()
 
-    collect_stats = asyncio.run(collect_latest_posts(limit_per_channel=args.collect_limit))
+    if args.no_collect:
+        collect_stats = {
+            "channels_total": 0,
+            "channels_ok": 0,
+            "channels_failed": 0,
+            "posts_seen": 0,
+            "posts_saved": 0,
+            "posts_skipped": 0,
+        }
+    else:
+        collect_stats = asyncio.run(collect_latest_posts(limit_per_channel=args.collect_limit))
 
     with SessionLocal() as session:
         selected_count = _auto_select_posts(session, pool_limit=args.pool_limit, top=args.top)
@@ -46,7 +58,7 @@ def main() -> None:
                 slug=args.slug,
                 llm_profile=args.llm_profile,
                 with_audio=args.with_audio,
-                tts_provider=settings.tts_provider,
+                tts_provider=args.tts_provider,
                 tts_voice=settings.tts_voice,
                 tts_speed=settings.tts_speed,
             )
