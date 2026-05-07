@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     llm_base_url: str = Field(default="http://localhost:11434/v1", alias="LLM_BASE_URL")
     llm_api_key: str = Field(default="ollama", alias="LLM_API_KEY")
     llm_model: str = Field(default="qwen2.5:7b-instruct", alias="LLM_MODEL")
+    llm_fast_model: str = Field(default="qwen2.5:3b-instruct", alias="LLM_FAST_MODEL")
+    llm_final_model: str = Field(default="qwen2.5:7b-instruct", alias="LLM_FINAL_MODEL")
 
     model_config = SettingsConfigDict(
         env_file=".env",

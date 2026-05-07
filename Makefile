@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup test check collect daily stats sources list selected show rank csv digest script ollama-cpu llm-check llm-script episode episodes unprocess validate backup channels
+.PHONY: setup test check collect daily stats sources list selected show rank csv digest script ollama-cpu llm-check llm-script llm-script-fast llm-script-final episode episodes episode-package unprocess validate backup channels
 
 setup:
 	python -m venv .venv
@@ -54,8 +54,17 @@ llm-check:
 llm-script:
 	$(PYTHON) scripts/make_llm_script.py
 
+llm-script-fast:
+	$(PYTHON) scripts/make_llm_script.py --profile fast
+
+llm-script-final:
+	$(PYTHON) scripts/make_llm_script.py --profile final
+
 episode:
 	$(PYTHON) scripts/make_episode_draft.py --limit 10
+
+episode-package:
+	$(PYTHON) scripts/make_episode_package.py --limit 10 --llm-profile final
 
 episodes:
 	$(PYTHON) scripts/list_episode_drafts.py

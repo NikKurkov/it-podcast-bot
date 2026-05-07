@@ -22,6 +22,7 @@ def rewrite_script_draft(
     draft_text: str,
     model: str | None = None,
     system_prompt: str | None = None,
+    temperature: float = 0.4,
 ) -> str:
     client = create_llm_client()
     response = client.chat.completions.create(
@@ -30,13 +31,24 @@ def rewrite_script_draft(
             {"role": "system", "content": system_prompt or _load_system_prompt()},
             {"role": "user", "content": draft_text},
         ],
-        temperature=0.4,
+        temperature=temperature,
     )
     content = response.choices[0].message.content
     if not content:
         raise RuntimeError("LLM returned an empty script.")
 
     return content.strip()
+
+
+def model_for_profile(profile: str) -> str:
+    if profile == "fast":
+        return settings.llm_fast_model
+    if profile == "final":
+        return settings.llm_final_model
+    if profile == "default":
+        return settings.llm_model
+
+    raise ValueError(f"Unknown LLM profile: {profile}")
 
 
 def _load_system_prompt() -> str:

@@ -371,8 +371,41 @@ make script
 make llm-script
 ```
 
+Быстрый и финальный профили:
+
+```bash
+ollama pull qwen2.5:3b-instruct
+make llm-script-fast
+make llm-script-final
+```
+
 Результат:
 
 ```text
 data/episodes/latest_llm_script.md
+```
+
+## Пакет выпуска
+
+Создать отдельную папку выпуска из выбранных постов:
+
+```bash
+python scripts/make_episode_package.py --limit 10
+```
+
+С LLM-сценарием:
+
+```bash
+python scripts/make_episode_package.py --limit 10 --llm-profile final
+```
+
+Структура:
+
+```text
+data/episodes/YYYY-MM-DD_HHMMSS/
+├── digest.md
+├── selected_posts.json
+├── script_draft.md
+├── llm_script.md
+└── metadata.json
 ```
