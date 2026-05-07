@@ -46,6 +46,7 @@ def main() -> None:
                 slug=args.slug,
                 llm_profile=args.llm_profile,
                 with_audio=args.with_audio,
+                tts_provider=settings.tts_provider,
                 tts_voice=settings.tts_voice,
                 tts_speed=settings.tts_speed,
             )

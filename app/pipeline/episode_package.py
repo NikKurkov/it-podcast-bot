@@ -1,4 +1,5 @@
 import json
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,7 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.db.models import TelegramPost
 from app.db.repositories.posts import get_selected_posts
-from app.audio.tts import convert_wav_to_mp3, synthesize_with_espeak
+from app.audio.assembler import assemble_podcast
+from app.audio.dialogue import script_to_dialogue_lines
+from app.audio.tts import convert_wav_to_mp3, synthesize_dialogue_lines, synthesize_with_espeak
+from app.config.settings import settings
 from app.llm.scriptwriter import model_for_profile, rewrite_script_draft
 from app.pipeline.daily_digest import (
     DigestItem,
@@ -36,6 +40,7 @@ def create_episode_package(
     slug: str | None = None,
     llm_profile: str | None = None,
     with_audio: bool = False,
+    tts_provider: str | None = None,
     tts_voice: str = "ru",
     tts_speed: int = 160,
 ) -> EpisodePackage:
@@ -69,12 +74,29 @@ def create_episode_package(
 
     if with_audio:
         audio_source_path = llm_script_path if llm_script_path and llm_script_path.exists() else script_draft_path
-        synthesize_with_espeak(
-            audio_source_path.read_text(encoding="utf-8"),
-            audio_wav_path,
-            voice=tts_voice,
-            speed=tts_speed,
-        )
+        provider_name = (tts_provider or settings.tts_provider).strip().lower()
+        if provider_name == "silero":
+            dialogue_lines = script_to_dialogue_lines(audio_source_path.read_text(encoding="utf-8"))
+            rendered_lines = asyncio.run(
+                synthesize_dialogue_lines(
+                    dialogue_lines,
+                    package_path / "audio_lines",
+                ),
+            )
+            assemble_podcast(
+                rendered_lines,
+                audio_wav_path,
+                pauses_ms=[line.pause_after_ms for line in dialogue_lines],
+            )
+        elif provider_name == "espeak":
+            synthesize_with_espeak(
+                audio_source_path.read_text(encoding="utf-8"),
+                audio_wav_path,
+                voice=tts_voice,
+                speed=tts_speed,
+            )
+        else:
+            raise ValueError(f"Unsupported episode audio provider: {provider_name}")
         convert_wav_to_mp3(audio_wav_path, audio_mp3_path)
 
     metadata = {
@@ -84,6 +106,7 @@ def create_episode_package(
         "post_ids": [post.id for post in posts],
         "llm_profile": llm_profile,
         "llm_model": llm_model,
+        "tts_provider": (tts_provider or settings.tts_provider) if with_audio else None,
         "files": {
             "digest_markdown": str(digest_markdown_path),
             "selected_posts": str(selected_posts_path),

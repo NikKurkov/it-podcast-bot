@@ -510,11 +510,24 @@ data/audio/sample_episode/004_ilya.wav
 data/audio/sample_podcast.wav
 ```
 
-В проекте также осталась простая legacy-озвучка через `espeak-ng` для быстрого
-роботизированного MP3 из `latest_llm_script.md`:
+Сделать Silero-озвучку текущего сценария `latest_llm_script.md`:
 
 ```bash
-make audio
+make audio-silero
+```
+
+Результат:
+
+```text
+data/audio/latest_episode.wav
+data/audio/latest_episode.mp3
+```
+
+В проекте также осталась простая legacy-озвучка через `espeak-ng` как явный
+fallback:
+
+```bash
+python scripts/make_audio.py --provider espeak
 ```
 
 Вход:
