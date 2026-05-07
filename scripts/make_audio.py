@@ -9,6 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.audio.assembler import assemble_podcast
 from app.audio.dialogue import script_to_dialogue_lines
+from app.audio.music import mix_background_music
 from app.audio.tts import convert_wav_to_mp3, synthesize_dialogue_lines, synthesize_with_espeak
 from app.config.settings import settings
 
@@ -22,6 +23,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--provider", choices=("silero", "espeak"), default=settings.tts_provider)
     parser.add_argument("--voice", default=settings.tts_voice)
     parser.add_argument("--speed", type=int, default=settings.tts_speed)
+    parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
+    parser.add_argument("--music-volume", type=float, default=settings.audio_background_music_volume)
     parser.add_argument("--no-mp3", action="store_true")
     return parser.parse_args()
 
@@ -59,6 +62,18 @@ def main() -> None:
             speed=args.speed,
         )
         print(f"Saved WAV audio to {wav_path}")
+
+    if args.with_music:
+        music_output_path = Path(args.wav_output)
+        clean_voice_path = music_output_path.with_name(f"{music_output_path.stem}_voice.wav")
+        music_output_path.replace(clean_voice_path)
+        wav_path = mix_background_music(
+            clean_voice_path,
+            music_output_path,
+            music_volume=args.music_volume,
+            sample_rate=settings.tts_sample_rate,
+        )
+        print(f"Mixed background music into {wav_path}")
 
     if not args.no_mp3:
         mp3_path = convert_wav_to_mp3(wav_path, Path(args.mp3_output))

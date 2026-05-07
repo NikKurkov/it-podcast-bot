@@ -9,6 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.audio.assembler import assemble_podcast
 from app.audio.models import DialogueLine
+from app.audio.music import mix_background_music
 from app.audio.tts import synthesize_dialogue_lines
 from app.audio.voices import get_voice_config
 from app.config.settings import settings
@@ -54,6 +55,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render a local multi-speaker TTS sample.")
     parser.add_argument("--output", default="data/audio/sample_podcast.wav")
     parser.add_argument("--lines-dir", default="data/audio/sample_episode")
+    parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
+    parser.add_argument("--music-volume", type=float, default=settings.audio_background_music_volume)
     parser.add_argument("--no-assemble", action="store_true")
     return parser.parse_args()
 
@@ -88,6 +91,15 @@ def main() -> None:
         for line in SAMPLE_DIALOGUE
     ]
     output_path = assemble_podcast(rendered_lines, Path(args.output), pauses_ms=pauses)
+    if args.with_music:
+        clean_voice_path = output_path.with_name(f"{output_path.stem}_voice.wav")
+        output_path.replace(clean_voice_path)
+        output_path = mix_background_music(
+            clean_voice_path,
+            Path(args.output),
+            music_volume=args.music_volume,
+            sample_rate=settings.tts_sample_rate,
+        )
     print(f"Saved podcast sample to {output_path}")
 
 

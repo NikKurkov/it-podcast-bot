@@ -1,7 +1,7 @@
 PYTHON := .venv/bin/python
 TTS_PYTHON := .venv-tts/bin/python
 
-.PHONY: setup setup-tts test check collect daily final final-silero final-silero-llm stats sources list selected auto-select show rank csv digest script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero tts-sample tts-sample-silero episode episodes episode-package episode-package-silero unprocess validate backup channels
+.PHONY: setup setup-tts test check collect daily final final-silero final-silero-llm stats sources list selected auto-select show rank csv digest script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music tts-sample tts-sample-silero episode episodes episode-package episode-package-silero unprocess validate backup channels
 
 setup:
 	python -m venv .venv
@@ -84,6 +84,9 @@ audio:
 
 audio-silero:
 	$(TTS_PYTHON) scripts/make_audio.py --provider silero
+
+audio-silero-music:
+	$(TTS_PYTHON) scripts/make_audio.py --provider silero --with-music
 
 tts-sample:
 	$(PYTHON) scripts/make_tts_sample.py

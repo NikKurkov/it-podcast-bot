@@ -27,6 +27,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llm-profile", choices=("default", "fast", "final"), default=None)
     parser.add_argument("--with-audio", action="store_true")
     parser.add_argument("--tts-provider", choices=("silero", "espeak"), default=settings.tts_provider)
+    parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
+    parser.add_argument("--music-volume", type=float, default=settings.audio_background_music_volume)
     parser.add_argument(
         "--dialogue-script",
         action="store_true",
@@ -67,6 +69,8 @@ def main() -> None:
                 tts_provider=args.tts_provider,
                 tts_voice=settings.tts_voice,
                 tts_speed=settings.tts_speed,
+                with_music=args.with_music,
+                music_volume=args.music_volume,
             )
         except APIConnectionError as exc:
             raise SystemExit(

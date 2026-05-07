@@ -10,6 +10,7 @@ from app.db.models import TelegramPost
 from app.db.repositories.posts import get_selected_posts
 from app.audio.assembler import assemble_podcast
 from app.audio.dialogue import script_to_dialogue_lines
+from app.audio.music import mix_background_music
 from app.audio.tts import convert_wav_to_mp3, synthesize_dialogue_lines, synthesize_with_espeak
 from app.config.settings import settings
 from app.llm.scriptwriter import (
@@ -48,6 +49,8 @@ def create_episode_package(
     tts_provider: str | None = None,
     tts_voice: str = "ru",
     tts_speed: int = 160,
+    with_music: bool = False,
+    music_volume: float | None = None,
 ) -> EpisodePackage:
     package_title = title or f"IT podcast {datetime.now(timezone.utc).date().isoformat()}"
     package_path = Path("data/episodes") / _build_package_slug(slug)
@@ -103,6 +106,15 @@ def create_episode_package(
             )
         else:
             raise ValueError(f"Unsupported episode audio provider: {provider_name}")
+        if with_music:
+            clean_voice_path = audio_wav_path.with_name("audio_voice.wav")
+            audio_wav_path.replace(clean_voice_path)
+            mix_background_music(
+                clean_voice_path,
+                audio_wav_path,
+                music_volume=music_volume or settings.audio_background_music_volume,
+                sample_rate=settings.tts_sample_rate,
+            )
         convert_wav_to_mp3(audio_wav_path, audio_mp3_path)
 
     metadata = {
@@ -114,6 +126,7 @@ def create_episode_package(
         "llm_model": llm_model,
         "dialogue_script": dialogue_script,
         "tts_provider": (tts_provider or settings.tts_provider) if with_audio else None,
+        "background_music": with_music if with_audio else None,
         "files": {
             "digest_markdown": str(digest_markdown_path),
             "selected_posts": str(selected_posts_path),

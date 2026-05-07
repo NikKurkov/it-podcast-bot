@@ -494,6 +494,8 @@ TTS_PROVIDER=silero
 TTS_OUTPUT_DIR=data/audio
 TTS_SAMPLE_RATE=48000
 TTS_DEVICE=cpu
+AUDIO_BACKGROUND_MUSIC=false
+AUDIO_BACKGROUND_MUSIC_VOLUME=0.16
 ```
 
 Проверить `ffmpeg`:
@@ -549,6 +551,22 @@ data/audio/sample_podcast.wav
 ```bash
 make audio-silero
 ```
+
+Добавить тихую процедурную chill-подложку:
+
+```bash
+make audio-silero-music
+```
+
+Для тестового выпуска:
+
+```bash
+.venv-tts/bin/python scripts/make_tts_sample.py --with-music
+```
+
+Подложка генерируется локально через `ffmpeg`, без внешних треков и без
+лицензионных зависимостей. Громкость регулируется через
+`AUDIO_BACKGROUND_MUSIC_VOLUME` или аргумент `--music-volume`.
 
 Результат:
 
