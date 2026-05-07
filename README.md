@@ -396,6 +396,12 @@ make script
 make llm-script
 ```
 
+Сценарий сразу в формате диалога для четырёх голосов:
+
+```bash
+make llm-dialogue-script
+```
+
 Быстрый и финальный профили:
 
 ```bash
@@ -424,10 +430,9 @@ python scripts/make_episode_package.py --limit 10
 python scripts/make_episode_package.py --limit 10 --llm-profile final
 ```
 
-С локальной озвучкой:
+С локальной Silero-озвучкой и LLM-сценарием в формате диалога:
 
 ```bash
-python scripts/make_episode_package.py --limit 10 --llm-profile final --with-audio --tts-provider espeak
 make episode-package-silero
 ```
 

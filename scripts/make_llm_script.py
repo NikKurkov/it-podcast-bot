@@ -9,7 +9,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config.settings import settings
-from app.llm.scriptwriter import model_for_profile, rewrite_script_draft
+from app.llm.scriptwriter import (
+    model_for_profile,
+    rewrite_dialogue_script_draft,
+    rewrite_script_draft,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,6 +26,11 @@ def parse_args() -> argparse.Namespace:
         choices=("default", "fast", "final"),
         default="default",
         help="Model profile to use when --model is not set.",
+    )
+    parser.add_argument(
+        "--dialogue",
+        action="store_true",
+        help="Generate a four-character dialogue script for multi-voice TTS.",
     )
     return parser.parse_args()
 
@@ -36,7 +45,10 @@ def main() -> None:
     draft_text = input_path.read_text(encoding="utf-8")
     model = args.model or model_for_profile(args.profile)
     try:
-        script_text = rewrite_script_draft(draft_text, model=model)
+        if args.dialogue:
+            script_text = rewrite_dialogue_script_draft(draft_text, model=model)
+        else:
+            script_text = rewrite_script_draft(draft_text, model=model)
     except APIConnectionError as exc:
         raise SystemExit(
             "Could not connect to local LLM server.\n"

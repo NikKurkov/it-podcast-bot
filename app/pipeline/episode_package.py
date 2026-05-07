@@ -12,7 +12,11 @@ from app.audio.assembler import assemble_podcast
 from app.audio.dialogue import script_to_dialogue_lines
 from app.audio.tts import convert_wav_to_mp3, synthesize_dialogue_lines, synthesize_with_espeak
 from app.config.settings import settings
-from app.llm.scriptwriter import model_for_profile, rewrite_script_draft
+from app.llm.scriptwriter import (
+    model_for_profile,
+    rewrite_dialogue_script_draft,
+    rewrite_script_draft,
+)
 from app.pipeline.daily_digest import (
     DigestItem,
     export_digest_json,
@@ -39,6 +43,7 @@ def create_episode_package(
     title: str | None = None,
     slug: str | None = None,
     llm_profile: str | None = None,
+    dialogue_script: bool = False,
     with_audio: bool = False,
     tts_provider: str | None = None,
     tts_voice: str = "ru",
@@ -66,10 +71,11 @@ def create_episode_package(
     llm_model = None
     if llm_profile:
         llm_model = model_for_profile(llm_profile)
-        llm_text = rewrite_script_draft(
-            script_draft_path.read_text(encoding="utf-8"),
-            model=llm_model,
-        )
+        draft_text = script_draft_path.read_text(encoding="utf-8")
+        if dialogue_script:
+            llm_text = rewrite_dialogue_script_draft(draft_text, model=llm_model)
+        else:
+            llm_text = rewrite_script_draft(draft_text, model=llm_model)
         llm_script_path.write_text(llm_text + "\n", encoding="utf-8")
 
     if with_audio:
@@ -106,6 +112,7 @@ def create_episode_package(
         "post_ids": [post.id for post in posts],
         "llm_profile": llm_profile,
         "llm_model": llm_model,
+        "dialogue_script": dialogue_script,
         "tts_provider": (tts_provider or settings.tts_provider) if with_audio else None,
         "files": {
             "digest_markdown": str(digest_markdown_path),

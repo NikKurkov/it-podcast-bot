@@ -35,3 +35,17 @@ def test_rewrite_script_draft_uses_chat_completions(monkeypatch) -> None:
     assert fake_client.chat.completions.kwargs["model"] == "local-model"
     assert fake_client.chat.completions.kwargs["messages"][0]["content"] == "System"
     assert fake_client.chat.completions.kwargs["messages"][1]["content"] == "Черновик"
+
+
+def test_rewrite_dialogue_script_draft_uses_dialogue_prompt(monkeypatch) -> None:
+    fake_client = FakeClient()
+    monkeypatch.setattr(scriptwriter, "create_llm_client", lambda: fake_client)
+
+    result = scriptwriter.rewrite_dialogue_script_draft("Черновик", model="local-model")
+
+    assert result == "Готовый сценарий"
+    system_prompt = fake_client.chat.completions.kwargs["messages"][0]["content"]
+    assert "boris" in system_prompt
+    assert "lena" in system_prompt
+    assert "max" in system_prompt
+    assert "ilya" in system_prompt

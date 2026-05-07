@@ -40,6 +40,19 @@ def rewrite_script_draft(
     return content.strip()
 
 
+def rewrite_dialogue_script_draft(
+    draft_text: str,
+    model: str | None = None,
+    temperature: float = 0.35,
+) -> str:
+    return rewrite_script_draft(
+        draft_text,
+        model=model,
+        system_prompt=_load_dialogue_system_prompt(),
+        temperature=temperature,
+    )
+
+
 def model_for_profile(profile: str) -> str:
     if profile == "fast":
         return settings.llm_fast_model
@@ -53,6 +66,14 @@ def model_for_profile(profile: str) -> str:
 
 def _load_system_prompt() -> str:
     prompt_path = Path("app/llm/prompts/scriptwriter.md")
+    if prompt_path.exists() and prompt_path.read_text(encoding="utf-8").strip():
+        return prompt_path.read_text(encoding="utf-8").strip()
+
+    return DEFAULT_SYSTEM_PROMPT
+
+
+def _load_dialogue_system_prompt() -> str:
+    prompt_path = Path("app/llm/prompts/dialogue_scriptwriter.md")
     if prompt_path.exists() and prompt_path.read_text(encoding="utf-8").strip():
         return prompt_path.read_text(encoding="utf-8").strip()
 

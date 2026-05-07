@@ -1,10 +1,31 @@
 from pathlib import Path
+from urllib.parse import urlparse
 
 from app.config.settings import settings
 
 
 def _clean_channel(value: str) -> str:
-    return value.strip().lstrip("@")
+    value = value.strip()
+    if not value:
+        return ""
+
+    parsed = urlparse(value if "://" in value else f"//{value}")
+    if parsed.netloc.casefold() in {"t.me", "telegram.me", "www.t.me"}:
+        return _channel_from_telegram_path(parsed.path)
+
+    if parsed.netloc and parsed.netloc.casefold() not in {"t.me", "telegram.me", "www.t.me"}:
+        return value.lstrip("@").strip("/")
+
+    return value.lstrip("@").strip("/")
+
+
+def _channel_from_telegram_path(path: str) -> str:
+    parts = [part for part in path.split("/") if part]
+    if not parts:
+        return ""
+    if parts[0] == "s" and len(parts) > 1:
+        return parts[1].lstrip("@")
+    return parts[0].lstrip("@")
 
 
 def _parse_channels(value: str) -> list[str]:

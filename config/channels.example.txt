@@ -1,3 +1,8 @@
-# One channel per line. Usernames can be written with or without @.
+# One channel per line. Usernames can be written as:
+# durov
+# @durov
+# t.me/durov
+# https://t.me/durov
+# https://t.me/s/durov
 durov
 pythonetc

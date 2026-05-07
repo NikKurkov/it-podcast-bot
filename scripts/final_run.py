@@ -27,6 +27,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llm-profile", choices=("default", "fast", "final"), default=None)
     parser.add_argument("--with-audio", action="store_true")
     parser.add_argument("--tts-provider", choices=("silero", "espeak"), default=settings.tts_provider)
+    parser.add_argument(
+        "--dialogue-script",
+        action="store_true",
+        help="Use the four-character LLM prompt when --llm-profile is set.",
+    )
     parser.add_argument("--no-collect", action="store_true", help="Skip Telegram collection step.")
     parser.add_argument("--slug", default=None)
     return parser.parse_args()
@@ -57,6 +62,7 @@ def main() -> None:
                 limit=args.top,
                 slug=args.slug,
                 llm_profile=args.llm_profile,
+                dialogue_script=args.dialogue_script,
                 with_audio=args.with_audio,
                 tts_provider=args.tts_provider,
                 tts_voice=settings.tts_voice,
