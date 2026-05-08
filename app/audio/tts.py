@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from app.audio.models import DialogueLine, RenderedLine
+from app.audio.postprocess import process_voice_audio
 from app.audio.providers.base import BaseTTSProvider
 from app.audio.providers.piper import PiperTTSProvider
 from app.audio.providers.silero import SileroTTSProvider
@@ -45,12 +46,22 @@ async def synthesize_dialogue_lines(
         voice_config = get_voice_config(character_key)
         provider = get_tts_provider(voice_config["provider"])
         audio_path = output_dir / f"{index:03d}_{character_key}.wav"
+        raw_audio_path = output_dir / f"{index:03d}_{character_key}.raw.wav"
         rendered_path = await provider.synthesize(
             line.text,
             speaker=voice_config["speaker"],
-            output_path=audio_path,
+            output_path=raw_audio_path,
             sample_rate=voice_config.get("sample_rate"),
         )
+        rendered_path = process_voice_audio(
+            rendered_path,
+            audio_path,
+            sample_rate=voice_config.get("sample_rate"),
+            tempo=voice_config.get("tempo", 1.0),
+            pitch_semitones=voice_config.get("pitch_semitones", 0.0),
+            volume_db=voice_config.get("volume_db", 0.0),
+        )
+        raw_audio_path.unlink(missing_ok=True)
         rendered_lines.append(
             RenderedLine(
                 speaker=character_key,

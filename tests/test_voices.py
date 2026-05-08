@@ -15,11 +15,17 @@ def test_get_voice_config_returns_mark_voice() -> None:
 
 
 def test_get_voice_config_returns_nika_voice() -> None:
-    assert get_voice_config("nika")["speaker"] == "xenia"
+    config = get_voice_config("nika")
+
+    assert config["speaker"] == "baya"
+    assert config["tempo"] > 1.0
 
 
 def test_get_voice_config_returns_gleb_voice() -> None:
-    assert get_voice_config("gleb")["speaker"] == "aidar"
+    config = get_voice_config("gleb")
+
+    assert config["speaker"] == "aidar"
+    assert config["pitch_semitones"] < 0
 
 
 def test_get_voice_config_returns_artem_provider() -> None:

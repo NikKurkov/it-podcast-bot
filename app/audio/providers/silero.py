@@ -53,6 +53,8 @@ class SileroTTSProvider(BaseTTSProvider):
             speaker=speaker,
             sample_rate=sample_rate,
             audio_path=str(output_path),
+            put_accent=True,
+            put_yo=True,
         )
         return output_path
 
