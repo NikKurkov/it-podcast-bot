@@ -72,11 +72,19 @@ _GENERIC_FILLER_PHRASES = {
 }
 _QUALITY_RETRY_CODES = {
     "generic_filler",
+    "bad_opening_speaker",
+    "markdown_separator",
     "missing_character",
     "speaker_streak",
     "underused_character",
 }
-_BLOCKING_QUALITY_CODES = {"generic_filler", "missing_character", "underused_character"}
+_BLOCKING_QUALITY_CODES = {
+    "bad_opening_speaker",
+    "generic_filler",
+    "markdown_separator",
+    "missing_character",
+    "underused_character",
+}
 
 
 @dataclass(frozen=True)
@@ -167,6 +175,7 @@ def validate_dialogue_script(
     _append_forbidden_stock_phrase_issues(script_text, issues)
     _append_repeated_phrase_issues(script_text, issues)
     _append_generic_filler_phrase_issues(script_text, issues)
+    _append_format_issues(script_text, dialogue_lines, issues)
     _append_unexpected_language_issues(script_text, issues)
 
     return ScriptValidationResult(
@@ -193,7 +202,9 @@ def repair_dialogue_script_text(
 ) -> str:
     validation = validation or validate_dialogue_script(script_text)
     line_numbers_to_remove = {
-        issue.line_number for issue in validation.issues if issue.code == "meta_phrase" and issue.line_number
+        issue.line_number
+        for issue in validation.issues
+        if issue.code in {"markdown_separator", "meta_phrase"} and issue.line_number
     }
     generic_filler_line_numbers = {
         issue.line_number
@@ -283,6 +294,33 @@ def _append_underused_character_issues(
                 code="underused_character",
             ),
         )
+
+
+def _append_format_issues(
+    script_text: str,
+    dialogue_lines,
+    issues: list[ScriptValidationIssue],
+) -> None:
+    if dialogue_lines and dialogue_lines[0].speaker != "mark":
+        issues.append(
+            ScriptValidationIssue(
+                "warning",
+                "Dialogue should open with `mark` to frame the investigation.",
+                code="bad_opening_speaker",
+            ),
+        )
+
+    for line_number, raw_line in enumerate(script_text.splitlines(), start=1):
+        line = raw_line.strip()
+        if re.fullmatch(r"-{3,}|_{3,}|\*{3,}", line):
+            issues.append(
+                ScriptValidationIssue(
+                    "warning",
+                    "Script contains markdown separator lines.",
+                    line_number=line_number,
+                    code="markdown_separator",
+                ),
+            )
 
 
 def _append_banned_meta_phrase_issues(

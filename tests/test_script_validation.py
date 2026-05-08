@@ -58,6 +58,35 @@ mark: В следующем выпуске мы продолжим следит�
     assert any(issue.code == "generic_filler" for issue in result.issues)
 
 
+def test_validate_dialogue_script_blocks_bad_opening_speaker() -> None:
+    result = validate_dialogue_script(
+        """
+nika: Практический вопрос в том, где запасной путь.
+mark: Риск не в анонсе, а в зависимости команды от внешнего сервиса.
+gleb: Я видел похожие истории.
+artem: Команде нужен план отката и проверка доступа.
+""",
+    )
+
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "bad_opening_speaker" for issue in result.issues)
+
+
+def test_validate_dialogue_script_blocks_markdown_separator() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Риск не в анонсе, а в зависимости команды от внешнего сервиса.
+---
+nika: Практический вопрос в том, где запасной путь.
+gleb: Я видел похожие истории.
+artem: Команде нужен план отката и проверка доступа.
+""",
+    )
+
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "markdown_separator" for issue in result.issues)
+
+
 def test_validate_dialogue_script_blocks_underused_character() -> None:
     result = validate_dialogue_script(
         """
@@ -289,3 +318,17 @@ mark: Спасибо за внимание!
     repaired = repair_dialogue_script_text(script_text)
 
     assert "Спасибо за внимание" not in repaired
+
+
+def test_repair_dialogue_script_text_removes_markdown_separator() -> None:
+    script_text = """
+mark: Риск не в анонсе, а в зависимости команды от внешнего сервиса.
+---
+nika: Практический вопрос в том, где запасной путь.
+gleb: Я видел похожие истории.
+artem: Команде нужен план отката и проверка доступа.
+"""
+
+    repaired = repair_dialogue_script_text(script_text)
+
+    assert "---" not in repaired
