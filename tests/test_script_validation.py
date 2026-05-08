@@ -146,6 +146,21 @@ artem: 这里出现了中文翻译块。
     assert any(issue.code == "unexpected_language" for issue in result.issues)
 
 
+def test_validate_dialogue_script_warns_on_generic_filler() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Сегодня смотрим на практический риск. Что же нас ждёт?
+nika: А если по-человечески?
+gleb: Я видел похожие истории.
+artem: Здесь важно проверить контроль доступа.
+""",
+    )
+
+    assert result.has_errors is False
+    assert result.has_blocking_issues is False
+    assert any(issue.code == "generic_filler" for issue in result.issues)
+
+
 def test_repair_dialogue_script_text_removes_meta_lines() -> None:
     script_text = """
 mark: Сегодня смотрим на практический риск.

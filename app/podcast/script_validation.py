@@ -40,6 +40,16 @@ _OVERUSED_PHRASES = {
     "в продакшене это упирается",
     "люблю новости, после которых",
 }
+_GENERIC_FILLER_PHRASES = {
+    "что же нас ждет",
+    "что же нас ждёт",
+    "давайте разберемся по порядку",
+    "давайте разберёмся по порядку",
+    "это действительно интересно",
+    "сегодня мы узнали",
+    "будем следить",
+    "до встречи",
+}
 
 
 @dataclass(frozen=True)
@@ -122,6 +132,7 @@ def validate_dialogue_script(
     _append_banned_meta_phrase_issues(script_text, issues)
     _append_forbidden_stock_phrase_issues(script_text, issues)
     _append_repeated_phrase_issues(script_text, issues)
+    _append_generic_filler_phrase_issues(script_text, issues)
     _append_unexpected_language_issues(script_text, issues)
 
     return ScriptValidationResult(
@@ -257,6 +268,26 @@ def _append_repeated_phrase_issues(
                     "error",
                     f"Phrase `{phrase}` is repeated {count} times.",
                     code="repeated_phrase",
+                ),
+            )
+
+
+def _append_generic_filler_phrase_issues(
+    script_text: str,
+    issues: list[ScriptValidationIssue],
+) -> None:
+    normalized_lines = [line.casefold().replace("ё", "е") for line in script_text.splitlines()]
+    normalized_phrases = {phrase.replace("ё", "е") for phrase in _GENERIC_FILLER_PHRASES}
+    for line_number, line in enumerate(normalized_lines, start=1):
+        for phrase in sorted(normalized_phrases):
+            if phrase not in line:
+                continue
+            issues.append(
+                ScriptValidationIssue(
+                    "warning",
+                    f"Script uses generic filler phrase `{phrase}`.",
+                    line_number=line_number,
+                    code="generic_filler",
                 ),
             )
 
