@@ -165,7 +165,7 @@ artem: 这里出现了中文翻译块。
         raise AssertionError("Expected RuntimeError")
 
 
-def test_rewrite_validated_dialogue_script_draft_repairs_persistent_quality_issue(
+def test_rewrite_validated_dialogue_script_draft_raises_on_unrepairable_quality_issue(
     monkeypatch,
 ) -> None:
     def fake_rewrite(*args, **kwargs):
@@ -178,10 +178,9 @@ artem: Здесь важно проверить контроль доступа.
 
     monkeypatch.setattr(scriptwriter, "rewrite_dialogue_script_draft", fake_rewrite)
 
-    script_text, validation = scriptwriter.rewrite_validated_dialogue_script_draft(
-        "Черновик",
-        attempts=2,
-    )
-
-    assert "Сегодня мы поговорим" not in script_text
-    assert validation.has_blocking_issues is False
+    try:
+        scriptwriter.rewrite_validated_dialogue_script_draft("Черновик", attempts=2)
+    except RuntimeError as exc:
+        assert "generic filler" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")

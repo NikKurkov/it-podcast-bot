@@ -39,8 +39,23 @@ nika: Три.
     )
 
     assert result.has_errors is False
-    assert result.has_blocking_issues is False
+    assert result.has_blocking_issues is True
     assert any("Missing: artem" in issue.message for issue in result.issues)
+
+
+def test_validate_dialogue_script_blocks_next_episode_outro() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Риск не в анонсе, а в зависимости команды от внешнего сервиса.
+gleb: Я видел похожие истории.
+nika: Практический вопрос в том, где запасной путь.
+artem: Команде нужен план отката и проверка доступа.
+mark: В следующем выпуске мы продолжим следить за обновлениями.
+""",
+    )
+
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "generic_filler" for issue in result.issues)
 
 
 def test_validate_dialogue_script_blocks_underused_character() -> None:
@@ -209,7 +224,7 @@ nika: Спасибо за внимание.
 """
 
     repaired = repair_dialogue_script_text(script_text)
-    result = validate_dialogue_script(repaired)
+    result = validate_dialogue_script(repaired, require_all_characters=False)
 
     assert "черновик" not in repaired
     assert "Спасибо за внимание" not in repaired
@@ -225,7 +240,7 @@ artem: Команде нужен план отката и проверка до�
 """
 
     repaired = repair_dialogue_script_text(script_text)
-    result = validate_dialogue_script(repaired)
+    result = validate_dialogue_script(repaired, require_all_characters=False)
 
     assert "Будем следить" not in repaired
     assert "план отката" in repaired
@@ -241,7 +256,7 @@ artem: Команде нужен план отката и проверка до�
 """
 
     repaired = repair_dialogue_script_text(script_text)
-    result = validate_dialogue_script(repaired)
+    result = validate_dialogue_script(repaired, require_all_characters=False)
 
     assert "До встречи" not in repaired
     assert result.has_blocking_issues is False
@@ -256,7 +271,7 @@ artem: Команде нужен план отката и проверка до�
 """
 
     repaired = repair_dialogue_script_text(script_text)
-    result = validate_dialogue_script(repaired)
+    result = validate_dialogue_script(repaired, require_all_characters=False)
 
     assert "До следующего выпуска" not in repaired
     assert result.has_blocking_issues is False

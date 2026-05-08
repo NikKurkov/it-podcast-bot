@@ -60,9 +60,12 @@ _GENERIC_FILLER_PHRASES = {
     "сегодня обсудим",
     "в целом, сегодня",
     "будем следить",
+    "продолжим следить",
     "следите за новостями",
+    "следите за обновлениями",
     "до встречи",
     "до следующего выпуска",
+    "в следующем выпуске",
     "спасибо за внимание",
     "что мы узнали",
     "революцию в",
@@ -73,7 +76,7 @@ _QUALITY_RETRY_CODES = {
     "speaker_streak",
     "underused_character",
 }
-_BLOCKING_QUALITY_CODES = {"generic_filler", "underused_character"}
+_BLOCKING_QUALITY_CODES = {"generic_filler", "missing_character", "underused_character"}
 
 
 @dataclass(frozen=True)
