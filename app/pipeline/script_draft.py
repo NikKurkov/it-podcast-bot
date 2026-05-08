@@ -1,4 +1,3 @@
-from datetime import datetime
 from itertools import groupby
 from pathlib import Path
 
@@ -10,11 +9,7 @@ def export_script_markdown(posts: list[TelegramPost], output_path: Path, title: 
     lines = [
         f"# {title}",
         "",
-        f"Generated at: {datetime.now().isoformat(timespec='seconds')}",
-        "",
-        "## Intro",
-        "",
-        "Коротко рассказываем, какие IT-новости сегодня попали в выпуск.",
+        "## Selected news",
         "",
     ]
 
@@ -28,14 +23,5 @@ def export_script_markdown(posts: list[TelegramPost], output_path: Path, title: 
             if post.url:
                 lines.extend(["", f"Source: {post.url}"])
             lines.append("")
-
-    lines.extend(
-        [
-            "## Outro",
-            "",
-            "На этом всё. В следующем этапе этот черновик можно превратить в полноценный сценарий.",
-            "",
-        ],
-    )
 
     output_path.write_text("\n".join(lines), encoding="utf-8")

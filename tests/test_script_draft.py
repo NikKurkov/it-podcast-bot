@@ -32,8 +32,12 @@ def test_export_script_markdown(tmp_path) -> None:
     content = output_path.read_text(encoding="utf-8")
 
     assert "# Test script" in content
+    assert "Generated at:" not in content
+    assert "## Intro" not in content
+    assert "## Outro" not in content
     assert "## top news" in content
     assert "Editor note: Open with this" not in content
+    assert "черновик" not in content
     assert "Selected story" in content
 
 

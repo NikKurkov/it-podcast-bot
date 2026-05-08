@@ -257,6 +257,78 @@ artem: Здесь важно проверить контроль доступа.
     assert len([issue for issue in result.issues if issue.code == "generic_filler"]) >= 2
 
 
+def test_validate_dialogue_script_blocks_repetitive_transition_filler() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Давайте перейдём к следующей новости.
+nika: Как это поможет обычному разработчику?
+gleb: Я видел похожие истории.
+artem: Здесь важен план отката.
+""",
+    )
+
+    assert result.has_blocking_issues is True
+    assert len([issue for issue in result.issues if issue.code == "generic_filler"]) >= 2
+
+
+def test_validate_dialogue_script_blocks_generic_developer_question() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Риск здесь в цепочке поставки пакета.
+nika: И как это влияет на обычного разработчика?
+gleb: Я видел похожие истории.
+artem: Здесь важен план отката.
+""",
+    )
+
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "generic_filler" for issue in result.issues)
+
+
+def test_validate_dialogue_script_blocks_generic_closing() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Риск здесь в цепочке поставки пакета.
+nika: Практический вопрос в том, кто проверяет обновления.
+gleb: Я видел похожие истории.
+artem: Здесь важен план отката.
+mark: На этом наш выпуск подходит к концу.
+""",
+    )
+
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "generic_filler" for issue in result.issues)
+
+
+def test_validate_dialogue_script_blocks_bland_acknowledgement_lines() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Риск здесь в цепочке поставки пакета.
+nika: Интересно, как это может повлиять на наши проекты?
+gleb: Абсолютно верно. Я видел похожие истории.
+artem: Здесь важен план отката.
+""",
+    )
+
+    assert result.has_blocking_issues is True
+    assert len([issue for issue in result.issues if issue.code == "generic_filler"]) >= 2
+
+
+def test_validate_dialogue_script_blocks_repeated_team_should_phrase() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Риск здесь в цепочке поставки пакета.
+nika: Практический вопрос в том, кто проверяет обновления.
+gleb: Командам стоит не верить красивым словам без плана отката.
+artem: Командам стоит вынести проверку доступа в релизный чеклист.
+""",
+    )
+
+    assert result.has_errors is True
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "repeated_phrase" for issue in result.issues)
+
+
 def test_repair_dialogue_script_text_removes_meta_lines() -> None:
     script_text = """
 mark: Сегодня смотрим на практический риск.
