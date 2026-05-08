@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup setup-tts setup-xtts test check collect daily final final-silero final-silero-llm final-silero-llm-music final-xtts-llm-music stats sources list selected auto-select show rank csv digest script validate-script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music audio-xtts audio-xtts-music tts-sample tts-sample-silero tts-sample-xtts episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels
+.PHONY: setup setup-tts setup-xtts test check collect daily final final-silero final-silero-llm final-silero-llm-music final-xtts-llm-music stats sources list selected auto-select show rank csv digest script validate-script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music audio-xtts audio-xtts-music audio-report tts-sample tts-sample-silero tts-sample-xtts episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels
 
 setup:
 	bash scripts/setup_env.sh
@@ -103,6 +103,9 @@ audio-xtts:
 
 audio-xtts-music:
 	TTS_PROVIDER=xtts $(PYTHON) scripts/make_audio.py --provider xtts --with-music
+
+audio-report:
+	$(PYTHON) scripts/audio_report.py data/audio/latest_episode.wav data/audio/latest_episode.mp3
 
 tts-sample:
 	$(PYTHON) scripts/make_tts_sample.py

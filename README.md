@@ -587,6 +587,18 @@ data/audio/sample_episode/004_artem.wav
 data/audio/sample_podcast.wav
 ```
 
+Проверить параметры готового аудио:
+
+```bash
+python scripts/audio_report.py data/audio/sample_podcast.wav
+```
+
+Для пакетного выпуска аудио-отчёт также сохраняется рядом с выпуском:
+
+```text
+data/episodes/<episode>/audio_report.json
+```
+
 Сделать Silero-озвучку текущего сценария `latest_llm_script.md`:
 
 ```bash

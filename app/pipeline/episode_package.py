@@ -10,6 +10,7 @@ from app.db.models import TelegramPost
 from app.db.repositories.posts import get_selected_posts
 from app.audio.assembler import assemble_podcast
 from app.audio.dialogue import script_to_dialogue_lines
+from app.audio.inspection import write_audio_report
 from app.audio.music import mix_background_music
 from app.audio.tts import convert_wav_to_mp3, synthesize_dialogue_lines, synthesize_with_espeak
 from app.config.settings import settings
@@ -68,6 +69,7 @@ def create_episode_package(
     audio_wav_path = package_path / "audio.wav" if with_audio else None
     audio_mp3_path = package_path / "audio.mp3" if with_audio else None
     audio_voice_wav_path = package_path / "audio_voice.wav" if with_audio and with_music else None
+    audio_report_path = package_path / "audio_report.json" if with_audio else None
     metadata_path = package_path / "metadata.json"
 
     export_digest_markdown(digest_items, digest_markdown_path)
@@ -137,6 +139,10 @@ def create_episode_package(
                 sample_rate=settings.tts_sample_rate,
             )
         convert_wav_to_mp3(audio_wav_path, audio_mp3_path)
+        report_paths = [audio_wav_path, audio_mp3_path]
+        if audio_voice_wav_path and audio_voice_wav_path.exists():
+            report_paths.append(audio_voice_wav_path)
+        write_audio_report(report_paths, audio_report_path)
 
     metadata = {
         "title": package_title,
@@ -161,6 +167,7 @@ def create_episode_package(
             "audio_wav": str(audio_wav_path) if audio_wav_path else None,
             "audio_mp3": str(audio_mp3_path) if audio_mp3_path else None,
             "audio_voice_wav": str(audio_voice_wav_path) if audio_voice_wav_path else None,
+            "audio_report": str(audio_report_path) if audio_report_path else None,
         },
     }
     metadata_path.write_text(
