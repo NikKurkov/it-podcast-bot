@@ -252,13 +252,18 @@ def repair_dialogue_script_text(
         for issue in validation.issues
         if issue.code == "generic_filler" and issue.line_number
     }
-    if not line_numbers_to_remove and not generic_filler_line_numbers:
+    if not line_numbers_to_remove and not generic_filler_line_numbers and not validation.issues:
         return script_text
 
     repaired_lines = []
+    team_should_replacement_index = 0
     for line_number, line in enumerate(script_text.splitlines(), start=1):
         if line_number in line_numbers_to_remove:
             continue
+        line, team_should_replacement_index = _rewrite_generic_filler_line(
+            line,
+            team_should_replacement_index,
+        )
         if line_number in generic_filler_line_numbers:
             line = _remove_generic_filler_sentences(line)
             if not line.strip():
@@ -471,6 +476,109 @@ def _remove_generic_filler_sentences(line: str) -> str:
     if not kept_sentences:
         return ""
     return f"{speaker}: {' '.join(kept_sentences)}"
+
+
+def _rewrite_generic_filler_line(line: str, team_should_replacement_index: int) -> tuple[str, int]:
+    match = _SPEAKER_LINE_RE.match(line.strip())
+    if not match:
+        return line, team_should_replacement_index
+
+    speaker = match.group("speaker")
+    text = match.group("text").strip()
+    text = re.sub(
+        r"^сегодня\s+мы\s+поговорим\s+о\s+",
+        "Разбираем ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"^давайте\s+(?:перейд[её]м|переходим)\s+к\s+следующей\s+новости\s+о\s+",
+        "Следующий риск - ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"^давайте\s+(?:перейд[её]м|переходим)\s+к\s+следующей\s+новости\.?\s*",
+        "Следующий риск - ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"^давайте\s+теперь\s+обсудим\s+новость\s+про\s+",
+        "Следующий риск - ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"^интересно,\s+как\s+это\s+(?:влияет\s+на|поможет)\s+обычн(?:ого|ому)\s+"
+        r"разработчик(?:а|у)\?\s*",
+        "Практический вопрос - ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"^на\s+этом\s+наш\s+выпуск\s+подходит\s+к\s+концу\.\s*",
+        "Финальный вывод: ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\s*спасибо\s+за\s+внимание,?\s*",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"^совершенно\s+верно\.\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"^абсолютно\s+верно\.\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"^да,\s+но\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"^да,\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    team_should_labels = [
+        "Практическое действие:",
+        "Проверка для команды:",
+        "Минимальный шаг:",
+        "Инженерный вывод:",
+        "Что зафиксировать:",
+    ]
+
+    def replace_team_should(match: re.Match) -> str:
+        nonlocal team_should_replacement_index
+        label = team_should_labels[team_should_replacement_index % len(team_should_labels)]
+        team_should_replacement_index += 1
+        if match.group(1).isupper():
+            return label
+        return label[0].lower() + label[1:]
+
+    text = re.sub(
+        r"\b(Командам|командам)\s+стоит\b",
+        replace_team_should,
+        text,
+    )
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return "", team_should_replacement_index
+
+    return f"{speaker}: {text}", team_should_replacement_index
 
 
 def _contains_generic_filler(text: str) -> bool:

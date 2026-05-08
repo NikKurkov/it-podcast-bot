@@ -111,28 +111,17 @@ nika: Спасибо за внимание.
     assert "Спасибо за внимание" not in script_text
 
 
-def test_rewrite_validated_dialogue_script_draft_retries_quality_warnings(monkeypatch) -> None:
-    outputs = iter(
-        [
-            """
-mark: Сегодня мы поговорим о практическом риске.
-nika: А если по-человечески?
-gleb: Я видел похожие истории.
-artem: Здесь важно проверить доступы и план отката.
-""",
-            """
-mark: Риск в этой новости не в громком анонсе, а в том, как команда будет проверять изменения.
-nika: То есть завтра стоит понять, что именно меняется в рабочем процессе?
-gleb: Я видел похожие истории: сначала обещают экономию времени, потом ищут владельца поломки.
-artem: Команде нужен контроль доступа, журнал изменений и понятный план отката.
-""",
-        ],
-    )
+def test_rewrite_validated_dialogue_script_draft_repairs_quality_warnings(monkeypatch) -> None:
     seen_drafts = []
 
     def fake_rewrite(draft_text, *args, **kwargs):
         seen_drafts.append(draft_text)
-        return next(outputs)
+        return """
+mark: Сегодня мы поговорим о практическом риске.
+nika: А если по-человечески?
+gleb: Я видел похожие истории.
+artem: Здесь важно проверить доступы и план отката.
+"""
 
     monkeypatch.setattr(scriptwriter, "rewrite_dialogue_script_draft", fake_rewrite)
 
@@ -143,7 +132,7 @@ artem: Команде нужен контроль доступа, журнал �
 
     assert validation.has_quality_retry_issues is False
     assert "Сегодня мы поговорим" not in script_text
-    assert "Редакторские замечания" in seen_drafts[1]
+    assert len(seen_drafts) == 1
 
 
 def test_rewrite_validated_dialogue_script_draft_raises_after_attempts(monkeypatch) -> None:
@@ -173,7 +162,6 @@ def test_rewrite_validated_dialogue_script_draft_raises_on_unrepairable_quality_
 mark: Сегодня мы поговорим о риске.
 nika: А если по-человечески?
 gleb: Я видел похожие истории.
-artem: Здесь важно проверить контроль доступа.
 """
 
     monkeypatch.setattr(scriptwriter, "rewrite_dialogue_script_draft", fake_rewrite)
@@ -181,6 +169,6 @@ artem: Здесь важно проверить контроль доступа.
     try:
         scriptwriter.rewrite_validated_dialogue_script_draft("Черновик", attempts=2)
     except RuntimeError as exc:
-        assert "generic filler" in str(exc)
+        assert "Missing: artem" in str(exc)
     else:
         raise AssertionError("Expected RuntimeError")

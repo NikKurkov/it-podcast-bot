@@ -407,6 +407,29 @@ mark: Спасибо за внимание!
     assert "Спасибо за внимание" not in repaired
 
 
+def test_repair_dialogue_script_text_rewrites_repeated_team_should_phrase() -> None:
+    script_text = """
+mark: Сегодня мы поговорим о вайбкодинге и его последствиях.
+nika: Интересно, как это влияет на обычного разработчика? Может, он просто перестанет учиться?
+gleb: Да, но это уже было. Вайбкодинг — это новый тренд на старую идею автоматизации.
+artem: Командам стоит проверить качество генерируемого кода перед внедрением.
+mark: Давайте перейдем к следующей новости о снижении доступности GitHub в России.
+nika: А по-человечески? Это как если бы кто-то заблокировал доступ к репозиториям?
+gleb: И это уже было не раз.
+artem: Командам стоит заложить мониторинг доступности в систему оперативного управления.
+mark: На этом наш выпуск подходит к концу. Спасибо за внимание, проверьте состояние сервисов.
+"""
+
+    repaired = repair_dialogue_script_text(script_text)
+    result = validate_dialogue_script(repaired)
+
+    assert "Командам стоит" not in repaired
+    assert "Давайте перейдем" not in repaired
+    assert "Сегодня мы поговорим" not in repaired
+    assert "Спасибо за внимание" not in repaired
+    assert result.has_blocking_issues is False
+
+
 def test_repair_dialogue_script_text_removes_markdown_separator() -> None:
     script_text = """
 mark: Риск не в анонсе, а в зависимости команды от внешнего сервиса.
