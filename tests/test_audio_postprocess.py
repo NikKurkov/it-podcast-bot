@@ -1,6 +1,6 @@
 import pytest
 
-from app.audio.postprocess import _atempo_filters, _mic_preset_filters
+from app.audio.postprocess import _atempo_filters, _build_voice_filters, _mic_preset_filters
 
 
 def test_atempo_filters_keeps_ffmpeg_values_in_supported_range() -> None:
@@ -25,3 +25,14 @@ def test_mic_preset_filters_returns_known_preset() -> None:
 def test_mic_preset_filters_rejects_unknown_preset() -> None:
     with pytest.raises(ValueError, match="Unknown mic preset"):
         _mic_preset_filters("unknown")
+
+
+def test_build_voice_filters_uses_input_sample_rate_for_pitch_shift() -> None:
+    filters = _build_voice_filters(
+        input_sample_rate=24000,
+        output_sample_rate=48000,
+        pitch_semitones=1.0,
+    )
+
+    assert any(item.startswith("asetrate=24000*") for item in filters)
+    assert "aresample=48000" in filters

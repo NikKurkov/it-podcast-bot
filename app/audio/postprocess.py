@@ -18,33 +18,14 @@ def process_voice_audio(
         raise RuntimeError("ffmpeg is not installed or not available in PATH.")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    pitch_factor = 2 ** (pitch_semitones / 12)
-    tempo_after_pitch = tempo / pitch_factor
-    filters = [
-        "silenceremove=start_periods=1:start_duration=0.04:start_threshold=-45dB",
-        "areverse",
-        "silenceremove=start_periods=1:start_duration=0.08:start_threshold=-45dB",
-        "areverse",
-    ]
-
-    if not math.isclose(pitch_factor, 1.0, abs_tol=0.001):
-        filters.extend(
-            [
-                f"asetrate={sample_rate}*{pitch_factor:.6f}",
-                f"aresample={sample_rate}",
-            ],
-        )
-
-    filters.extend(_atempo_filters(tempo_after_pitch))
-    filters.extend(_mic_preset_filters(mic_preset))
-    if not math.isclose(volume_db, 0.0, abs_tol=0.01):
-        filters.append(f"volume={volume_db:.2f}dB")
-
-    filters.extend(
-        [
-            "loudnorm=I=-18:TP=-2:LRA=11",
-            "afade=t=in:st=0:d=0.012",
-        ],
+    input_sample_rate = _get_audio_sample_rate(input_path)
+    filters = _build_voice_filters(
+        input_sample_rate=input_sample_rate,
+        output_sample_rate=sample_rate,
+        tempo=tempo,
+        pitch_semitones=pitch_semitones,
+        volume_db=volume_db,
+        mic_preset=mic_preset,
     )
 
     subprocess.run(
@@ -66,6 +47,73 @@ def process_voice_audio(
         stderr=subprocess.DEVNULL,
     )
     return output_path
+
+
+def _build_voice_filters(
+    *,
+    input_sample_rate: int,
+    output_sample_rate: int,
+    tempo: float = 1.0,
+    pitch_semitones: float = 0.0,
+    volume_db: float = 0.0,
+    mic_preset: str = "studio_neutral",
+) -> list[str]:
+    pitch_factor = 2 ** (pitch_semitones / 12)
+    tempo_after_pitch = tempo / pitch_factor
+    filters = [
+        "silenceremove=start_periods=1:start_duration=0.04:start_threshold=-45dB",
+        "areverse",
+        "silenceremove=start_periods=1:start_duration=0.08:start_threshold=-45dB",
+        "areverse",
+    ]
+
+    if not math.isclose(pitch_factor, 1.0, abs_tol=0.001):
+        filters.extend(
+            [
+                f"asetrate={input_sample_rate}*{pitch_factor:.6f}",
+                f"aresample={output_sample_rate}",
+            ],
+        )
+
+    filters.extend(_atempo_filters(tempo_after_pitch))
+    filters.extend(_mic_preset_filters(mic_preset))
+    if not math.isclose(volume_db, 0.0, abs_tol=0.01):
+        filters.append(f"volume={volume_db:.2f}dB")
+
+    filters.extend(
+        [
+            "loudnorm=I=-18:TP=-2:LRA=11",
+            "afade=t=in:st=0:d=0.012",
+        ],
+    )
+    return filters
+
+
+def _get_audio_sample_rate(audio_path: Path) -> int:
+    if not shutil.which("ffprobe"):
+        raise RuntimeError("ffprobe is not installed or not available in PATH.")
+
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=sample_rate",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(audio_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    try:
+        return int(result.stdout.strip())
+    except ValueError as exc:
+        raise RuntimeError(f"Could not detect audio sample rate for {audio_path}") from exc
 
 
 def _mic_preset_filters(preset: str) -> list[str]:
