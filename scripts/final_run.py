@@ -22,9 +22,9 @@ from app.utils.logger import setup_logging
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the full local episode pipeline.")
-    parser.add_argument("--collect-limit", type=int, default=20)
-    parser.add_argument("--pool-limit", type=int, default=50)
-    parser.add_argument("--top", type=int, default=5)
+    parser.add_argument("--collect-limit", type=int, default=settings.final_collect_limit)
+    parser.add_argument("--pool-limit", type=int, default=settings.final_pool_limit)
+    parser.add_argument("--top", type=int, default=settings.final_top_posts)
     parser.add_argument("--llm-profile", choices=("default", "fast", "final"), default=None)
     parser.add_argument("--with-audio", action="store_true")
     parser.add_argument("--tts-provider", choices=("silero", "xtts", "espeak"), default=settings.tts_provider)

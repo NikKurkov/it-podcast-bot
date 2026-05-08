@@ -98,7 +98,25 @@ python scripts/daily_run.py --collect-limit 20 --digest-limit 10
 Полный локальный выпуск одной командой:
 
 ```bash
-python scripts/final_run.py --collect-limit 20 --top 5 --with-audio
+python scripts/final_run.py --with-audio
+```
+
+Длина выпуска и количество новостей настраиваются через `.env`:
+
+```dotenv
+FINAL_COLLECT_LIMIT=20
+FINAL_POOL_LIMIT=50
+FINAL_TOP_POSTS=5
+```
+
+`FINAL_COLLECT_LIMIT` задаёт, сколько последних постов читать с каждого
+канала. `FINAL_POOL_LIMIT` задаёт размер пула для ранжирования. `FINAL_TOP_POSTS`
+задаёт, сколько новостей попадёт в выпуск.
+
+Разово можно переопределить через CLI:
+
+```bash
+python scripts/final_run.py --collect-limit 30 --pool-limit 100 --top 8 --with-audio
 ```
 
 С Silero-озвучкой через единое окружение проекта:
@@ -117,7 +135,7 @@ make final-silero-llm-music
 С LLM-сценарием:
 
 ```bash
-python scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --with-audio
+python scripts/final_run.py --llm-profile final --with-audio
 ```
 
 Бэкап текущей SQLite-базы:

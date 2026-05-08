@@ -24,19 +24,19 @@ daily:
 	$(PYTHON) scripts/daily_run.py --collect-limit 20 --digest-limit 10
 
 final:
-	$(PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --with-audio
+	$(PYTHON) scripts/final_run.py --with-audio
 
 final-silero:
-	$(PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --with-audio --tts-provider silero
+	$(PYTHON) scripts/final_run.py --with-audio --tts-provider silero
 
 final-silero-llm:
-	$(PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --dialogue-script --with-audio --tts-provider silero
+	$(PYTHON) scripts/final_run.py --llm-profile final --dialogue-script --with-audio --tts-provider silero
 
 final-silero-llm-music:
-	$(PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --dialogue-script --with-audio --tts-provider silero --with-music
+	$(PYTHON) scripts/final_run.py --llm-profile final --dialogue-script --with-audio --tts-provider silero --with-music
 
 final-xtts-llm-music:
-	TTS_PROVIDER=xtts $(PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --dialogue-script --with-audio --tts-provider xtts --with-music
+	TTS_PROVIDER=xtts $(PYTHON) scripts/final_run.py --llm-profile final --dialogue-script --with-audio --tts-provider xtts --with-music
 
 stats:
 	$(PYTHON) scripts/db_stats.py
