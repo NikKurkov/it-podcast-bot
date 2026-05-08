@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import log10
@@ -184,6 +185,50 @@ def rank_posts(
     )
 
 
+def diversify_ranked_posts(
+    ranked_posts: list[RankedPost],
+    limit: int,
+    max_per_source: int = 2,
+    max_per_topic: int = 3,
+    similarity_threshold: float = 0.42,
+) -> list[RankedPost]:
+    selected: list[RankedPost] = []
+    source_counts: dict[str, int] = {}
+    topic_counts: dict[str, int] = {}
+
+    for ranked_post in ranked_posts:
+        if len(selected) >= limit:
+            break
+        source = getattr(getattr(ranked_post.post, "source_channel", None), "username", "") or ""
+        source_key = source.casefold()
+        if source_key and source_counts.get(source_key, 0) >= max_per_source:
+            continue
+        if _is_topic_saturated(ranked_post.topics, topic_counts, max_per_topic):
+            continue
+        if _is_too_similar_to_selected(ranked_post, selected, similarity_threshold):
+            continue
+
+        selected.append(ranked_post)
+        if source_key:
+            source_counts[source_key] = source_counts.get(source_key, 0) + 1
+        for topic in ranked_post.topics:
+            topic_counts[topic] = topic_counts.get(topic, 0) + 1
+
+    if len(selected) >= limit:
+        return selected
+
+    selected_ids = {ranked_post.post.id for ranked_post in selected}
+    for ranked_post in ranked_posts:
+        if len(selected) >= limit:
+            break
+        if ranked_post.post.id in selected_ids:
+            continue
+        selected.append(ranked_post)
+        selected_ids.add(ranked_post.post.id)
+
+    return selected
+
+
 def score_post(
     post: TelegramPost,
     now: datetime | None = None,
@@ -356,3 +401,57 @@ def _deduplicate(values: list[str]) -> list[str]:
         seen.add(value)
         result.append(value)
     return result
+
+
+def _is_topic_saturated(
+    topics: list[str],
+    topic_counts: dict[str, int],
+    max_per_topic: int,
+) -> bool:
+    if not topics:
+        return False
+    return all(topic_counts.get(topic, 0) >= max_per_topic for topic in topics)
+
+
+def _is_too_similar_to_selected(
+    ranked_post: RankedPost,
+    selected: list[RankedPost],
+    similarity_threshold: float,
+) -> bool:
+    tokens = _content_tokens(ranked_post.post.text)
+    if not tokens:
+        return False
+
+    for selected_post in selected:
+        selected_tokens = _content_tokens(selected_post.post.text)
+        if not selected_tokens:
+            continue
+        similarity = len(tokens & selected_tokens) / len(tokens | selected_tokens)
+        if similarity >= similarity_threshold:
+            return True
+    return False
+
+
+def _content_tokens(text: str) -> set[str]:
+    normalized = text.casefold().replace("ё", "е")
+    tokens = set(re.findall(r"[a-zа-я0-9]{4,}", normalized))
+    stop_words = {
+        "https",
+        "http",
+        "www",
+        "того",
+        "если",
+        "есть",
+        "будет",
+        "были",
+        "также",
+        "можно",
+        "свои",
+        "себя",
+        "этот",
+        "этой",
+        "этом",
+        "когда",
+        "которые",
+    }
+    return tokens - stop_words

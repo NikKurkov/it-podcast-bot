@@ -14,7 +14,8 @@ from app.db.repositories.posts import get_posts_for_digest, update_editorial_sta
 from app.db.session import SessionLocal, init_db
 from app.pipeline.episode_package import create_episode_package
 from app.pipeline.filters import contains_excluded_keyword, load_exclude_keywords
-from app.pipeline.scoring import rank_posts
+from app.pipeline.episode_report import format_episode_report
+from app.pipeline.scoring import diversify_ranked_posts, rank_posts
 from app.pipeline.source_weights import load_source_weights
 from app.telegram_reader.collector import collect_latest_posts
 from app.utils.logger import setup_logging
@@ -86,10 +87,7 @@ def main() -> None:
             raise
 
     print("Final run complete:")
-    for key, value in collect_stats.items():
-        print(f"  {key}: {value}")
-    print(f"  selected_posts: {selected_count}")
-    print(f"  package: {package.path}")
+    print(format_episode_report(package, collect_stats=collect_stats, selected_count=selected_count))
 
 
 def _auto_select_posts(session, pool_limit: int, top: int) -> int:
@@ -104,7 +102,7 @@ def _auto_select_posts(session, pool_limit: int, top: int) -> int:
         for ranked_post in ranked_posts
         if not contains_excluded_keyword(ranked_post.post.text, keywords)
     ]
-    selected_ranked_posts = ranked_posts[:top]
+    selected_ranked_posts = diversify_ranked_posts(ranked_posts, limit=top)
     selected_posts = [ranked_post.post for ranked_post in selected_ranked_posts]
     for ranked_post in selected_ranked_posts:
         update_editorial_state(

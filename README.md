@@ -98,7 +98,15 @@ python scripts/daily_run.py --collect-limit 20 --digest-limit 10
 Полный локальный выпуск одной командой:
 
 ```bash
-python scripts/final_run.py --with-audio
+make podcast
+```
+
+Эта команда собирает посты, выбирает новости, пишет диалоговый LLM-сценарий,
+озвучивает его через XTTS и добавляет фоновую музыку. Если нужно только
+сгенерировать сценарий по уже собранным постам:
+
+```bash
+make podcast-script
 ```
 
 Длина выпуска и количество новостей настраиваются через `.env`:
@@ -116,7 +124,7 @@ FINAL_TOP_POSTS=5
 Разово можно переопределить через CLI:
 
 ```bash
-python scripts/final_run.py --collect-limit 30 --pool-limit 100 --top 8 --with-audio
+python scripts/make_podcast.py --collect-limit 30 --pool-limit 100 --top 8 --with-music
 ```
 
 С Silero-озвучкой через единое окружение проекта:

@@ -6,7 +6,13 @@ from sqlalchemy.orm import sessionmaker
 from app.db.models import Base
 from app.db.repositories.posts import save_post
 from app.db.repositories.sources import get_or_create_source
-from app.pipeline.scoring import detect_topics, rank_posts, score_post, score_post_breakdown
+from app.pipeline.scoring import (
+    detect_topics,
+    diversify_ranked_posts,
+    rank_posts,
+    score_post,
+    score_post_breakdown,
+)
 
 
 def test_score_post_prefers_posts_with_more_engagement() -> None:
@@ -181,6 +187,50 @@ def test_detect_topics() -> None:
         "security",
         "devops",
     ]
+
+
+def test_diversify_ranked_posts_limits_one_source_dominance() -> None:
+    session_factory = _make_session_factory()
+    now = datetime(2026, 5, 6, 12, tzinfo=timezone.utc)
+
+    with session_factory() as session:
+        noisy_source = get_or_create_source(session, "noisy")
+        other_source = get_or_create_source(session, "other")
+        posts = []
+        for index in range(4):
+            post = save_post(
+                session,
+                noisy_source,
+                {
+                    "telegram_message_id": index + 1,
+                    "message_date": now,
+                    "text": f"Python API production infrastructure release {index}",
+                    "views": 10000 - index,
+                    "forwards": 100,
+                },
+            )
+            assert post is not None
+            posts.append(post)
+        other_post = save_post(
+            session,
+            other_source,
+            {
+                "telegram_message_id": 10,
+                "message_date": now,
+                "text": "Security incident in GitHub production infrastructure",
+                "views": 100,
+                "forwards": 5,
+            },
+        )
+        assert other_post is not None
+        posts.append(other_post)
+
+        ranked_posts = rank_posts(posts, now=now)
+        selected = diversify_ranked_posts(ranked_posts, limit=3, max_per_source=2)
+
+        assert len(selected) == 3
+        assert sum(1 for item in selected if item.post.source_channel.username == "noisy") == 2
+        assert any(item.post.source_channel.username == "other" for item in selected)
 
 
 def _make_session_factory() -> sessionmaker:

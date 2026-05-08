@@ -1,6 +1,7 @@
 import re
 
 from app.audio.models import DialogueLine
+from app.audio.voice_direction import apply_voice_direction
 from app.audio.voices import get_supported_characters, get_voice_config
 from app.podcast.characters import get_character_keys, resolve_character_key
 
@@ -23,10 +24,10 @@ def script_to_dialogue_lines(script_text: str) -> list[DialogueLine]:
             speaker_index += 1
             voice_config = get_voice_config(speaker)
             lines.append(
-                DialogueLine(
-                    speaker=speaker,
-                    text=chunk,
-                    pause_after_ms=voice_config.get("pause_after_ms", 500),
+                apply_voice_direction(
+                    speaker,
+                    chunk,
+                    base_pause_after_ms=voice_config.get("pause_after_ms", 500),
                 ),
             )
     return lines
@@ -74,10 +75,10 @@ def _flush_dialogue_line(
 
     voice_config = get_voice_config(speaker)
     lines.append(
-        DialogueLine(
+        apply_voice_direction(
             speaker=speaker,
             text=text,
-            pause_after_ms=voice_config.get("pause_after_ms", 500),
+            base_pause_after_ms=voice_config.get("pause_after_ms", 500),
         ),
     )
 
