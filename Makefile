@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup setup-tts setup-xtts test check collect daily final final-silero final-silero-llm final-silero-llm-music final-xtts-llm-music stats sources list selected auto-select show rank csv digest script validate-script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music audio-xtts audio-xtts-music audio-report tts-sample tts-sample-silero tts-sample-xtts episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels
+.PHONY: setup setup-tts setup-xtts test check collect daily final final-silero final-silero-llm final-silero-llm-music final-xtts-llm-music stats sources list selected auto-select show rank csv digest script validate-script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music audio-xtts audio-xtts-music audio-report tts-sample tts-sample-silero tts-sample-xtts episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels clean-generated clean-generated-dry-run
 
 setup:
 	bash scripts/setup_env.sh
@@ -145,3 +145,9 @@ backup:
 
 channels:
 	$(PYTHON) scripts/channels.py list
+
+clean-generated-dry-run:
+	$(PYTHON) scripts/clean_workspace.py
+
+clean-generated:
+	$(PYTHON) scripts/clean_workspace.py --yes

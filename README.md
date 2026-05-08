@@ -697,6 +697,31 @@ data/audio/latest_episode.wav
 data/audio/latest_episode.mp3
 ```
 
+## Очистка локальных данных
+
+Чтобы начать новый прогон с чистого листа, можно удалить сгенерированные
+выпуски, временное аудио и SQLite-базу новостей:
+
+```bash
+make clean-generated-dry-run
+make clean-generated
+```
+
+Скрипт сохраняет настройки, список каналов, голоса и музыку:
+
+```text
+config/channels.txt
+data/voices/
+data/audio/music/
+```
+
+То же самое напрямую:
+
+```bash
+python scripts/clean_workspace.py
+python scripts/clean_workspace.py --yes
+```
+
 В проекте также осталась простая legacy-озвучка через `espeak-ng` как явный
 fallback:
 
