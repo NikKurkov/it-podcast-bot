@@ -41,6 +41,10 @@ _OVERUSED_PHRASES = {
     "люблю новости, после которых",
 }
 _GENERIC_FILLER_PHRASES = {
+    "начнем?",
+    "начнём?",
+    "давайте начнем",
+    "давайте начнём",
     "сегодня мы поговорим",
     "что же нас ждет",
     "что же нас ждёт",
@@ -59,10 +63,17 @@ _GENERIC_FILLER_PHRASES = {
     "следите за новостями",
     "до встречи",
     "до следующего выпуска",
+    "спасибо за внимание",
+    "что мы узнали",
     "революцию в",
 }
-_QUALITY_RETRY_CODES = {"generic_filler", "missing_character", "speaker_streak"}
-_BLOCKING_QUALITY_CODES = {"generic_filler"}
+_QUALITY_RETRY_CODES = {
+    "generic_filler",
+    "missing_character",
+    "speaker_streak",
+    "underused_character",
+}
+_BLOCKING_QUALITY_CODES = {"generic_filler", "underused_character"}
 
 
 @dataclass(frozen=True)
@@ -127,6 +138,7 @@ def validate_dialogue_script(
                     code="missing_character",
                 ),
             )
+        _append_underused_character_issues(speakers, issues)
 
     for index, line in enumerate(dialogue_lines, start=1):
         if len(line.text) > max_line_chars:
@@ -246,6 +258,28 @@ def _speaker_streaks(speakers: list[str]) -> list[tuple[str, int]]:
         count = 1
     streaks.append((current, count))
     return streaks
+
+
+def _append_underused_character_issues(
+    speakers: list[str],
+    issues: list[ScriptValidationIssue],
+    min_lines: int = 2,
+    min_total_lines: int = 8,
+) -> None:
+    if len(speakers) < min_total_lines:
+        return
+
+    for character in get_character_keys():
+        count = speakers.count(character)
+        if count == 0 or count >= min_lines:
+            continue
+        issues.append(
+            ScriptValidationIssue(
+                "warning",
+                f"Character `{character}` is underused: {count} line, expected at least {min_lines}.",
+                code="underused_character",
+            ),
+        )
 
 
 def _append_banned_meta_phrase_issues(

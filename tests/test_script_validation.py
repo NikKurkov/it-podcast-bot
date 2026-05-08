@@ -43,6 +43,26 @@ nika: Три.
     assert any("Missing: artem" in issue.message for issue in result.issues)
 
 
+def test_validate_dialogue_script_blocks_underused_character() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Один.
+mark: Два.
+mark: Три.
+gleb: Три.
+nika: Четыре.
+nika: Пять.
+artem: Шесть.
+artem: Семь.
+artem: Восемь.
+""",
+    )
+
+    assert result.has_errors is False
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "underused_character" for issue in result.issues)
+
+
 def test_format_validation_report_ok() -> None:
     result = validate_dialogue_script(
         """
@@ -192,7 +212,7 @@ nika: Спасибо за внимание.
     result = validate_dialogue_script(repaired)
 
     assert "черновик" not in repaired
-    assert "Спасибо за внимание" in repaired
+    assert "Спасибо за внимание" not in repaired
     assert result.has_blocking_issues is False
 
 
@@ -240,3 +260,17 @@ artem: Команде нужен план отката и проверка до�
 
     assert "До следующего выпуска" not in repaired
     assert result.has_blocking_issues is False
+
+
+def test_repair_dialogue_script_text_removes_thanks_outro_line() -> None:
+    script_text = """
+mark: Риск не в анонсе, а в зависимости команды от внешнего сервиса.
+nika: Практический вопрос в том, где запасной путь.
+gleb: Я видел похожие истории.
+artem: Команде нужен план отката и проверка доступа.
+mark: Спасибо за внимание!
+"""
+
+    repaired = repair_dialogue_script_text(script_text)
+
+    assert "Спасибо за внимание" not in repaired

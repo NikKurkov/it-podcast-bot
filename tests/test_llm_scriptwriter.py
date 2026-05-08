@@ -108,7 +108,7 @@ nika: Спасибо за внимание.
 
     assert validation.has_blocking_issues is False
     assert "черновик" not in script_text
-    assert "Спасибо за внимание" in script_text
+    assert "Спасибо за внимание" not in script_text
 
 
 def test_rewrite_validated_dialogue_script_draft_retries_quality_warnings(monkeypatch) -> None:
