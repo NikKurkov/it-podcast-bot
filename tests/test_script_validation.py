@@ -58,6 +58,21 @@ mark: В следующем выпуске мы продолжим следит�
     assert any(issue.code == "generic_filler" for issue in result.issues)
 
 
+def test_validate_dialogue_script_blocks_service_leak() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Риск не в анонсе, а в зависимости команды от внешнего сервиса.
+nika: Auto-selected by final run score=13.58, поэтому эта тема важна.
+gleb: Я видел похожие истории.
+artem: Команде нужен план отката и проверка доступа.
+""",
+    )
+
+    assert result.has_errors is True
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "service_leak" for issue in result.issues)
+
+
 def test_validate_dialogue_script_blocks_bad_opening_speaker() -> None:
     result = validate_dialogue_script(
         """

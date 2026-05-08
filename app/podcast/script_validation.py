@@ -69,6 +69,16 @@ _GENERIC_FILLER_PHRASES = {
     "спасибо за внимание",
     "что мы узнали",
     "революцию в",
+    "спасибо за разбор",
+    "в прошлом выпуске",
+}
+_SERVICE_LEAK_PATTERNS = {
+    r"auto-selected",
+    r"editor note",
+    r"final run score",
+    r"\bscore\s*=",
+    r"\btopics\s*:",
+    r"\bpenalties\s*:",
 }
 _QUALITY_RETRY_CODES = {
     "generic_filler",
@@ -83,6 +93,7 @@ _BLOCKING_QUALITY_CODES = {
     "generic_filler",
     "markdown_separator",
     "missing_character",
+    "service_leak",
     "underused_character",
 }
 
@@ -176,6 +187,7 @@ def validate_dialogue_script(
     _append_repeated_phrase_issues(script_text, issues)
     _append_generic_filler_phrase_issues(script_text, issues)
     _append_format_issues(script_text, dialogue_lines, issues)
+    _append_service_leak_issues(script_text, issues)
     _append_unexpected_language_issues(script_text, issues)
 
     return ScriptValidationResult(
@@ -391,6 +403,25 @@ def _append_generic_filler_phrase_issues(
                     f"Script uses generic filler phrase `{phrase}`.",
                     line_number=line_number,
                     code="generic_filler",
+                ),
+            )
+
+
+def _append_service_leak_issues(
+    script_text: str,
+    issues: list[ScriptValidationIssue],
+) -> None:
+    normalized_lines = [line.casefold() for line in script_text.splitlines()]
+    for pattern in sorted(_SERVICE_LEAK_PATTERNS):
+        for line_number, line in enumerate(normalized_lines, start=1):
+            if not re.search(pattern, line):
+                continue
+            issues.append(
+                ScriptValidationIssue(
+                    "error",
+                    f"Script leaks internal service text matching `{pattern}`.",
+                    line_number=line_number,
+                    code="service_leak",
                 ),
             )
 

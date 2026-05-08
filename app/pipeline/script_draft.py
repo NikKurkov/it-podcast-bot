@@ -24,8 +24,6 @@ def export_script_markdown(posts: list[TelegramPost], output_path: Path, title: 
         for index, post in enumerate(category_posts, start=1):
             lines.append(f"### {index}. @{post.source_channel.username} #{post.telegram_message_id}")
             lines.append("")
-            if post.editor_note:
-                lines.extend([f"Editor note: {post.editor_note}", ""])
             lines.append(post.text)
             if post.url:
                 lines.extend(["", f"Source: {post.url}"])

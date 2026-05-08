@@ -33,7 +33,7 @@ def test_export_script_markdown(tmp_path) -> None:
 
     assert "# Test script" in content
     assert "## top news" in content
-    assert "Editor note: Open with this" in content
+    assert "Editor note: Open with this" not in content
     assert "Selected story" in content
 
 
