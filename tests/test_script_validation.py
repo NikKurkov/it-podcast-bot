@@ -225,3 +225,18 @@ artem: Команде нужен план отката и проверка до�
 
     assert "До встречи" not in repaired
     assert result.has_blocking_issues is False
+
+
+def test_repair_dialogue_script_text_removes_generic_outro_line() -> None:
+    script_text = """
+mark: Риск не в анонсе, а в зависимости команды от внешнего сервиса.
+nika: До следующего выпуска!
+gleb: Я видел похожие истории.
+artem: Команде нужен план отката и проверка доступа.
+"""
+
+    repaired = repair_dialogue_script_text(script_text)
+    result = validate_dialogue_script(repaired)
+
+    assert "До следующего выпуска" not in repaired
+    assert result.has_blocking_issues is False
