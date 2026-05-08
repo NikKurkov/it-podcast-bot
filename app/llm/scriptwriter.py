@@ -3,6 +3,11 @@ from pathlib import Path
 from app.config.settings import settings
 from app.llm.client import create_llm_client
 from app.podcast.prompt_context import build_scriptwriter_context
+from app.podcast.script_validation import (
+    ScriptValidationResult,
+    format_validation_report,
+    validate_dialogue_script,
+)
 
 
 DEFAULT_SYSTEM_PROMPT = """Ты сценарист русскоязычного IT-подкаста.
@@ -51,6 +56,38 @@ def rewrite_dialogue_script_draft(
         model=model,
         system_prompt=_load_dialogue_system_prompt(),
         temperature=temperature,
+    )
+
+
+def rewrite_validated_dialogue_script_draft(
+    draft_text: str,
+    model: str | None = None,
+    attempts: int = 2,
+    temperature: float = 0.35,
+) -> tuple[str, ScriptValidationResult]:
+    if attempts < 1:
+        raise ValueError("attempts must be at least 1")
+
+    last_script_text = ""
+    last_validation: ScriptValidationResult | None = None
+    for attempt in range(1, attempts + 1):
+        attempt_temperature = max(0.15, temperature - ((attempt - 1) * 0.08))
+        script_text = rewrite_dialogue_script_draft(
+            draft_text,
+            model=model,
+            temperature=attempt_temperature,
+        )
+        validation = validate_dialogue_script(script_text)
+        if not validation.has_blocking_issues:
+            return script_text, validation
+
+        last_script_text = script_text
+        last_validation = validation
+
+    report = format_validation_report(last_validation) if last_validation else "validation did not run"
+    raise RuntimeError(
+        "LLM generated an invalid dialogue script after "
+        f"{attempts} attempts.\n{report}\n\nLast script:\n{last_script_text}"
     )
 
 

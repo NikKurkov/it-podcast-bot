@@ -50,3 +50,58 @@ def test_rewrite_dialogue_script_draft_uses_dialogue_prompt(monkeypatch) -> None
     assert "nika" in system_prompt
     assert "artem" in system_prompt
     assert "Марк" in system_prompt
+
+
+def test_rewrite_validated_dialogue_script_draft_retries_invalid_output(monkeypatch) -> None:
+    outputs = iter(
+        [
+            """
+mark: Сегодня смотрим на риск.
+nika: А если по-человечески?
+gleb: Я видел похожие истории.
+artem: 这里出现了中文翻译块。
+""",
+            """
+mark: Сегодня смотрим на риск.
+nika: А если по-человечески?
+gleb: Я видел похожие истории.
+artem: Здесь важно проверить доступы и план отката.
+""",
+        ],
+    )
+    calls = []
+
+    def fake_rewrite(*args, **kwargs):
+        calls.append(kwargs)
+        return next(outputs)
+
+    monkeypatch.setattr(scriptwriter, "rewrite_dialogue_script_draft", fake_rewrite)
+
+    script_text, validation = scriptwriter.rewrite_validated_dialogue_script_draft(
+        "Черновик",
+        model="local-model",
+        attempts=2,
+    )
+
+    assert validation.has_blocking_issues is False
+    assert "Здесь важно проверить доступы" in script_text
+    assert len(calls) == 2
+
+
+def test_rewrite_validated_dialogue_script_draft_raises_after_attempts(monkeypatch) -> None:
+    def fake_rewrite(*args, **kwargs):
+        return """
+mark: Сегодня смотрим на риск.
+nika: А если по-человечески?
+gleb: Я видел похожие истории.
+artem: 这里出现了中文翻译块。
+"""
+
+    monkeypatch.setattr(scriptwriter, "rewrite_dialogue_script_draft", fake_rewrite)
+
+    try:
+        scriptwriter.rewrite_validated_dialogue_script_draft("Черновик", attempts=1)
+    except RuntimeError as exc:
+        assert "invalid dialogue script" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")

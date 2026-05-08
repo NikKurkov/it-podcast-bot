@@ -165,7 +165,6 @@ def format_character_profiles_for_prompt() -> str:
     blocks = []
     for profile in get_all_character_profiles():
         dialogue_lines = "\n".join(f"- {item}" for item in profile.dialogue_function)
-        catchphrase_lines = "\n".join(f"- {item}" for item in profile.catchphrases)
         blocks.append(
             "\n".join(
                 [
@@ -176,8 +175,10 @@ def format_character_profiles_for_prompt() -> str:
                     f"Стиль: {profile.speech_style}",
                     "Функция в диалоге:",
                     dialogue_lines,
-                    "Примеры фраз:",
-                    catchphrase_lines,
+                    (
+                        "Важно: фирменные фразы персонажа хранятся только как "
+                        "ориентир интонации. Не используй их дословно в сценарии."
+                    ),
                 ],
             ),
         )

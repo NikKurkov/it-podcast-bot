@@ -5,11 +5,39 @@ from app.audio.dialogue import script_to_dialogue_lines
 from app.podcast.characters import get_character_keys, resolve_character_key
 
 _SPEAKER_LINE_RE = re.compile(r"^(?P<speaker>[\wА-Яа-яЁё-]+)\s*[:：]\s*(?P<text>.*)$")
+_CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _LEGACY_CHARACTERS = {
     "boris": "mark",
     "lena": "nika",
     "max": "artem",
     "ilya": "artem",
+}
+_BANNED_META_PHRASES = {
+    "готовы к полноценному сценарию",
+    "следующий этап",
+    "черновик",
+    "сценарий можно",
+}
+_FORBIDDEN_STOCK_PHRASES = {
+    "давайте восстановим цепочку событий",
+    "на первый взгляд это обычный релиз, но дальше начинается самое интересное",
+    "вопрос не в том, что произошло. вопрос",
+    "это не революция. это старый паттерн",
+    "звучит отлично. осталось понять",
+    "я такое уже видел. тогда оно называлось иначе",
+    "то есть если перевести с инженерного на человеческий",
+    "подождите, а мне завтра на работе это поможет",
+    "люблю новости, после которых",
+    "главный вопрос не в том, можно ли это запустить",
+    "технически проблема не в самой модели",
+    "в продакшене это упирается",
+    "если обещают магию, сначала ищем место",
+}
+_OVERUSED_PHRASES = {
+    "давайте восстановим цепочку событий",
+    "звучит отлично. осталось понять",
+    "в продакшене это упирается",
+    "люблю новости, после которых",
 }
 
 
@@ -18,6 +46,7 @@ class ScriptValidationIssue:
     severity: str
     message: str
     line_number: int | None = None
+    code: str = "generic"
 
 
 @dataclass(frozen=True)
@@ -29,6 +58,13 @@ class ScriptValidationResult:
     @property
     def has_errors(self) -> bool:
         return any(issue.severity == "error" for issue in self.issues)
+
+    @property
+    def has_blocking_issues(self) -> bool:
+        return any(
+            issue.severity == "error" or issue.code in {"meta_phrase", "repeated_phrase"}
+            for issue in self.issues
+        )
 
 
 def validate_dialogue_script(
@@ -58,6 +94,7 @@ def validate_dialogue_script(
                 ScriptValidationIssue(
                     "warning",
                     f"Dialogue does not use all characters. Missing: {', '.join(missing)}.",
+                    code="missing_character",
                 ),
             )
 
@@ -67,6 +104,7 @@ def validate_dialogue_script(
                 ScriptValidationIssue(
                     "warning",
                     f"Line {index} is long for TTS: {len(line.text)} chars.",
+                    code="long_line",
                 ),
             )
 
@@ -76,8 +114,14 @@ def validate_dialogue_script(
                 ScriptValidationIssue(
                     "warning",
                     f"Speaker `{speaker}` has {streak} consecutive lines.",
+                    code="speaker_streak",
                 ),
             )
+
+    _append_banned_meta_phrase_issues(script_text, issues)
+    _append_forbidden_stock_phrase_issues(script_text, issues)
+    _append_repeated_phrase_issues(script_text, issues)
+    _append_unexpected_language_issues(script_text, issues)
 
     return ScriptValidationResult(
         issues=issues,
@@ -121,6 +165,7 @@ def _collect_explicit_speakers(
                     "error",
                     f"Unknown dialogue speaker `{speaker}`.",
                     line_number=line_number,
+                    code="unknown_speaker",
                 ),
             )
     return speakers
@@ -142,3 +187,76 @@ def _speaker_streaks(speakers: list[str]) -> list[tuple[str, int]]:
         count = 1
     streaks.append((current, count))
     return streaks
+
+
+def _append_banned_meta_phrase_issues(
+    script_text: str,
+    issues: list[ScriptValidationIssue],
+) -> None:
+    normalized_text = script_text.casefold()
+    for phrase in sorted(_BANNED_META_PHRASES):
+        if phrase in normalized_text:
+            issues.append(
+                ScriptValidationIssue(
+                    "error",
+                    f"Script contains meta phrase `{phrase}`.",
+                    code="meta_phrase",
+                ),
+            )
+
+
+def _append_forbidden_stock_phrase_issues(
+    script_text: str,
+    issues: list[ScriptValidationIssue],
+) -> None:
+    normalized_text = script_text.casefold().replace("ё", "е")
+    for phrase in sorted(_FORBIDDEN_STOCK_PHRASES):
+        if phrase in normalized_text:
+            issues.append(
+                ScriptValidationIssue(
+                    "error",
+                    f"Script copies stock character phrase `{phrase}`.",
+                    code="stock_phrase",
+                ),
+            )
+
+
+def _append_repeated_phrase_issues(
+    script_text: str,
+    issues: list[ScriptValidationIssue],
+) -> None:
+    normalized_text = script_text.casefold()
+    for phrase in sorted(_OVERUSED_PHRASES):
+        count = normalized_text.count(phrase)
+        if count > 1:
+            issues.append(
+                ScriptValidationIssue(
+                    "error",
+                    f"Phrase `{phrase}` is repeated {count} times.",
+                    code="repeated_phrase",
+                ),
+            )
+
+
+def _append_unexpected_language_issues(
+    script_text: str,
+    issues: list[ScriptValidationIssue],
+) -> None:
+    match = _CJK_RE.search(script_text)
+    if not match:
+        return
+
+    line_number = None
+    for index, line in enumerate(script_text.splitlines(), start=1):
+        if _CJK_RE.search(line):
+            line_number = index
+            break
+
+    issues.append(
+        ScriptValidationIssue(
+            "error",
+            "Script contains non-Russian CJK text or an unintended translation block.",
+            line_number=line_number,
+            code="unexpected_language",
+        ),
+    )

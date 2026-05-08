@@ -31,7 +31,7 @@ def main() -> None:
     print(format_validation_report(result))
     print(f"  lines: {result.lines_count}")
     print(f"  speakers: {', '.join(result.speakers) if result.speakers else '-'}")
-    if result.has_errors:
+    if result.has_blocking_issues:
         raise SystemExit(1)
 
 

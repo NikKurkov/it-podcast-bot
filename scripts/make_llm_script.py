@@ -13,6 +13,7 @@ from app.llm.scriptwriter import (
     model_for_profile,
     rewrite_dialogue_script_draft,
     rewrite_script_draft,
+    rewrite_validated_dialogue_script_draft,
 )
 from app.podcast.script_validation import format_validation_report, validate_dialogue_script
 
@@ -34,6 +35,12 @@ def parse_args() -> argparse.Namespace:
         help="Generate a four-character dialogue script for multi-voice TTS.",
     )
     parser.add_argument("--no-validate", action="store_true")
+    parser.add_argument(
+        "--attempts",
+        type=int,
+        default=2,
+        help="How many times to retry dialogue generation when validation fails.",
+    )
     return parser.parse_args()
 
 
@@ -47,7 +54,14 @@ def main() -> None:
     draft_text = input_path.read_text(encoding="utf-8")
     model = args.model or model_for_profile(args.profile)
     try:
-        if args.dialogue:
+        validation = None
+        if args.dialogue and not args.no_validate:
+            script_text, validation = rewrite_validated_dialogue_script_draft(
+                draft_text,
+                model=model,
+                attempts=args.attempts,
+            )
+        elif args.dialogue:
             script_text = rewrite_dialogue_script_draft(draft_text, model=model)
         else:
             script_text = rewrite_script_draft(draft_text, model=model)
@@ -79,9 +93,9 @@ def main() -> None:
     print(f"Saved LLM script to {output_path}")
 
     if args.dialogue and not args.no_validate:
-        validation = validate_dialogue_script(script_text)
+        validation = validation or validate_dialogue_script(script_text)
         print(format_validation_report(validation))
-        if validation.has_errors:
+        if validation.has_blocking_issues:
             raise SystemExit(1)
 
 

@@ -15,10 +15,9 @@ from app.audio.tts import convert_wav_to_mp3, synthesize_dialogue_lines, synthes
 from app.config.settings import settings
 from app.llm.scriptwriter import (
     model_for_profile,
-    rewrite_dialogue_script_draft,
     rewrite_script_draft,
+    rewrite_validated_dialogue_script_draft,
 )
-from app.podcast.script_validation import validate_dialogue_script
 from app.pipeline.daily_digest import (
     DigestItem,
     export_digest_json,
@@ -81,8 +80,11 @@ def create_episode_package(
         llm_model = model_for_profile(llm_profile)
         draft_text = script_draft_path.read_text(encoding="utf-8")
         if dialogue_script:
-            llm_text = rewrite_dialogue_script_draft(draft_text, model=llm_model)
-            validation = validate_dialogue_script(llm_text)
+            llm_text, validation = rewrite_validated_dialogue_script_draft(
+                draft_text,
+                model=llm_model,
+                attempts=2,
+            )
             script_validation_issues = [
                 {
                     "severity": issue.severity,
@@ -91,7 +93,7 @@ def create_episode_package(
                 }
                 for issue in validation.issues
             ]
-            if validation.has_errors:
+            if validation.has_blocking_issues:
                 messages = "; ".join(issue.message for issue in validation.issues)
                 raise RuntimeError(f"Generated dialogue script failed validation: {messages}")
         else:
