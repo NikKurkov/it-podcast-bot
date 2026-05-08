@@ -12,11 +12,12 @@ _LEGACY_CHARACTERS = {
     "max": "artem",
     "ilya": "artem",
 }
-_BANNED_META_PHRASES = {
-    "готовы к полноценному сценарию",
-    "следующий этап",
-    "черновик",
-    "сценарий можно",
+_BANNED_META_PHRASE_PATTERNS = {
+    r"готов[аы]?\s+к\s+полноценному\s+сценарию",
+    r"следующ(?:ий|ем)\s+этап(?:е)?",
+    r"этот\s+черновик",
+    r"черновик\s+можно\s+превратить",
+    r"сценарий\s+можно",
 }
 _FORBIDDEN_STOCK_PHRASES = {
     "давайте восстановим цепочку событий",
@@ -141,6 +142,25 @@ def format_validation_report(result: ScriptValidationResult) -> str:
     return "\n".join(lines)
 
 
+def repair_dialogue_script_text(
+    script_text: str,
+    validation: ScriptValidationResult | None = None,
+) -> str:
+    validation = validation or validate_dialogue_script(script_text)
+    line_numbers_to_remove = {
+        issue.line_number for issue in validation.issues if issue.code == "meta_phrase" and issue.line_number
+    }
+    if not line_numbers_to_remove:
+        return script_text
+
+    repaired_lines = [
+        line
+        for line_number, line in enumerate(script_text.splitlines(), start=1)
+        if line_number not in line_numbers_to_remove
+    ]
+    return "\n".join(repaired_lines).strip()
+
+
 def _collect_explicit_speakers(
     script_text: str,
     issues: list[ScriptValidationIssue],
@@ -193,13 +213,16 @@ def _append_banned_meta_phrase_issues(
     script_text: str,
     issues: list[ScriptValidationIssue],
 ) -> None:
-    normalized_text = script_text.casefold()
-    for phrase in sorted(_BANNED_META_PHRASES):
-        if phrase in normalized_text:
+    normalized_lines = [line.casefold() for line in script_text.splitlines()]
+    for pattern in sorted(_BANNED_META_PHRASE_PATTERNS):
+        for line_number, line in enumerate(normalized_lines, start=1):
+            if not re.search(pattern, line):
+                continue
             issues.append(
                 ScriptValidationIssue(
                     "error",
-                    f"Script contains meta phrase `{phrase}`.",
+                    f"Script contains meta phrase matching `{pattern}`.",
+                    line_number=line_number,
                     code="meta_phrase",
                 ),
             )

@@ -6,6 +6,7 @@ from app.podcast.prompt_context import build_scriptwriter_context
 from app.podcast.script_validation import (
     ScriptValidationResult,
     format_validation_report,
+    repair_dialogue_script_text,
     validate_dialogue_script,
 )
 
@@ -80,6 +81,12 @@ def rewrite_validated_dialogue_script_draft(
         validation = validate_dialogue_script(script_text)
         if not validation.has_blocking_issues:
             return script_text, validation
+
+        repaired_script_text = repair_dialogue_script_text(script_text, validation)
+        if repaired_script_text != script_text:
+            repaired_validation = validate_dialogue_script(repaired_script_text)
+            if not repaired_validation.has_blocking_issues:
+                return repaired_script_text, repaired_validation
 
         last_script_text = script_text
         last_validation = validation

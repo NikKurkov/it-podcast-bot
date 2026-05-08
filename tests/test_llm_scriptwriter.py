@@ -88,6 +88,29 @@ artem: Здесь важно проверить доступы и план от�
     assert len(calls) == 2
 
 
+def test_rewrite_validated_dialogue_script_draft_repairs_meta_outro(monkeypatch) -> None:
+    def fake_rewrite(*args, **kwargs):
+        return """
+mark: Сегодня смотрим на практический риск.
+nika: А если по-человечески?
+gleb: Я видел похожие истории.
+artem: Здесь важно проверить доступы и план отката.
+mark: В следующем этапе мы превратим этот черновик в полноценный сценарий.
+nika: Спасибо за внимание.
+"""
+
+    monkeypatch.setattr(scriptwriter, "rewrite_dialogue_script_draft", fake_rewrite)
+
+    script_text, validation = scriptwriter.rewrite_validated_dialogue_script_draft(
+        "Черновик",
+        attempts=1,
+    )
+
+    assert validation.has_blocking_issues is False
+    assert "черновик" not in script_text
+    assert "Спасибо за внимание" in script_text
+
+
 def test_rewrite_validated_dialogue_script_draft_raises_after_attempts(monkeypatch) -> None:
     def fake_rewrite(*args, **kwargs):
         return """

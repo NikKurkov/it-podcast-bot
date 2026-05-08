@@ -1,5 +1,6 @@
 from app.podcast.script_validation import (
     format_validation_report,
+    repair_dialogue_script_text,
     validate_dialogue_script,
 )
 
@@ -70,6 +71,20 @@ artem: Здесь важно проверить контроль доступа.
     assert any("meta phrase" in issue.message for issue in result.issues)
 
 
+def test_validate_dialogue_script_allows_technical_draft_tokens_term() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Сегодня разбираем ускорение генерации текста.
+nika: А если по-человечески?
+gleb: Быстрее не всегда значит проще в эксплуатации.
+artem: Модель даёт черновики токенов, а основная модель проверяет их перед выдачей.
+""",
+    )
+
+    assert result.has_errors is False
+    assert result.has_blocking_issues is False
+
+
 def test_validate_dialogue_script_errors_on_stock_character_phrase() -> None:
     result = validate_dialogue_script(
         """
@@ -129,3 +144,21 @@ artem: 这里出现了中文翻译块。
     assert result.has_errors is True
     assert result.has_blocking_issues is True
     assert any(issue.code == "unexpected_language" for issue in result.issues)
+
+
+def test_repair_dialogue_script_text_removes_meta_lines() -> None:
+    script_text = """
+mark: Сегодня смотрим на практический риск.
+nika: А если по-человечески?
+gleb: Я видел похожие истории.
+artem: Здесь важно проверить контроль доступа.
+mark: В следующем этапе мы превратим этот черновик в полноценный сценарий.
+nika: Спасибо за внимание.
+"""
+
+    repaired = repair_dialogue_script_text(script_text)
+    result = validate_dialogue_script(repaired)
+
+    assert "черновик" not in repaired
+    assert "Спасибо за внимание" in repaired
+    assert result.has_blocking_issues is False
