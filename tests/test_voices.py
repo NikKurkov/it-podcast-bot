@@ -25,7 +25,9 @@ def test_get_voice_config_returns_gleb_voice() -> None:
     config = get_voice_config("gleb")
 
     assert config["speaker"] == "aidar"
+    assert config["tempo"] > 1.0
     assert config["pitch_semitones"] < 0
+    assert config["mic_preset"] == "home_dynamic"
 
 
 def test_get_voice_config_returns_artem_provider() -> None:
@@ -35,3 +37,15 @@ def test_get_voice_config_returns_artem_provider() -> None:
 def test_get_voice_config_unknown_character_raises_clear_error() -> None:
     with pytest.raises(ValueError, match="Unknown character"):
         get_voice_config("unknown")
+
+
+def test_get_voice_config_can_switch_to_xtts(monkeypatch) -> None:
+    from app.audio import voices
+
+    monkeypatch.setattr(voices.settings, "tts_provider", "xtts")
+    monkeypatch.setattr(voices.settings, "xtts_gleb_voice", "data/voices/custom_gleb.wav")
+
+    config = get_voice_config("gleb")
+
+    assert config["provider"] == "xtts"
+    assert config["speaker"] == "data/voices/custom_gleb.wav"

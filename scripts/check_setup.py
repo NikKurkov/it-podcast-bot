@@ -53,7 +53,7 @@ def main() -> None:
     print(f"  tts_output_dir: {settings.tts_output_dir}")
     print(f"  ffmpeg_binary: {'exists' if shutil.which('ffmpeg') else 'missing'}")
     print(f"  torch_module: {'exists' if importlib.util.find_spec('torch') else 'missing'}")
-    print(f"  tts_venv: {_format_tts_venv_status()}")
+    print(f"  project_venv: {_format_project_venv_status()}")
     print(f"  channels: {len(channels)}")
     for channel in channels:
         print(f"    @{channel}")
@@ -99,18 +99,18 @@ def _build_warnings(channels: list[str], channels_file: Path) -> list[str]:
     if settings.tts_provider == "silero" and importlib.util.find_spec("torch") is None:
         warnings.append(
             "Silero TTS requires torch in the runtime Python. "
-            "Use make setup-tts and make tts-sample-silero for the isolated TTS environment.",
+            "Run make setup to create the unified Python 3.11 environment.",
         )
     if not shutil.which("ffmpeg"):
         warnings.append("ffmpeg is required for podcast audio assembly.")
     return warnings
 
 
-def _format_tts_venv_status() -> str:
-    tts_python = Path(".venv-tts/bin/python")
-    if not tts_python.exists():
+def _format_project_venv_status() -> str:
+    python_path = Path(".venv/bin/python")
+    if not python_path.exists():
         return "missing"
-    return f"{tts_python} (exists)"
+    return f"{python_path} (exists)"
 
 
 async def _check_telegram_authorization() -> bool:

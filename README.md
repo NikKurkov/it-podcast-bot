@@ -101,10 +101,10 @@ python scripts/daily_run.py --collect-limit 20 --digest-limit 10
 python scripts/final_run.py --collect-limit 20 --top 5 --with-audio
 ```
 
-С Silero-озвучкой через отдельное TTS-окружение:
+С Silero-озвучкой через единое окружение проекта:
 
 ```bash
-make setup-tts
+make setup
 make final-silero
 ```
 
@@ -539,6 +539,9 @@ TTS_PROVIDER=silero
 TTS_OUTPUT_DIR=data/audio
 TTS_SAMPLE_RATE=48000
 TTS_DEVICE=cpu
+XTTS_MODEL_NAME=tts_models/multilingual/multi-dataset/xtts_v2
+XTTS_LANGUAGE=ru
+XTTS_VOICE_REFS_DIR=data/voices/xtts
 AUDIO_BACKGROUND_MUSIC=false
 AUDIO_BACKGROUND_MUSIC_VOLUME=0.16
 ```
@@ -555,25 +558,18 @@ ffmpeg -version
 pip install -r requirements.txt
 ```
 
-Для реального Silero нужен PyTorch. Если `torch` недоступен для текущего Python,
-создайте отдельный Python 3.12 venv для TTS и установите PyTorch туда.
-При первом запуске Silero может скачать модель через `torch.hub`.
-
-`torch` намеренно не закреплён в `requirements.txt`, потому что сборка зависит
-от версии Python, CPU/GPU и платформы. Остальные лёгкие зависимости TTS уже в
-`requirements.txt`.
-
-На этой машине основной проект может жить в `.venv` на свежем Python, а Silero
-удобнее запускать из отдельного CPU-only окружения:
+Проект использует единое окружение `.venv` на Python 3.11. Это общий знаменатель
+для Telegram/LLM-пайплайна, PyTorch, Silero и Coqui XTTS-v2.
 
 ```bash
-make setup-tts
+make setup
 make tts-sample-silero
 ```
 
-`make setup-tts` использует `uv`, ставит локальный Python 3.12 в кэш `uv`,
-создаёт `.venv-tts` внутри проекта и ставит CPU-сборку PyTorch. Это не трогает
-основной `.venv`.
+`make setup` использует `uv`, ставит локальный Python 3.11 в кэш `uv`, создаёт
+`.venv`, ставит обычные зависимости, CPU-сборку PyTorch и Coqui TTS. Старые
+команды `make setup-tts` и `make setup-xtts` оставлены как совместимые алиасы,
+но тоже используют это же `.venv`.
 
 Тестовая многоголосая озвучка:
 
@@ -606,17 +602,73 @@ make audio-silero-music
 Для тестового выпуска:
 
 ```bash
-.venv-tts/bin/python scripts/make_tts_sample.py --with-music
+.venv/bin/python scripts/make_tts_sample.py --with-music
 ```
 
 Подложка генерируется локально через `ffmpeg`, без внешних треков и без
 лицензионных зависимостей. Громкость регулируется через
 `AUDIO_BACKGROUND_MUSIC_VOLUME` или аргумент `--music-volume`.
 
+## Экспериментальная XTTS-v2 озвучка
+
+XTTS-v2 может звучать естественнее Silero, но ему нужны референсные голоса.
+Положите короткие чистые WAV-файлы с разрешёнными голосами:
+
+```text
+data/voices/xtts/mark.wav
+data/voices/xtts/gleb.wav
+data/voices/xtts/nika.wav
+data/voices/xtts/artem.wav
+```
+
+Рекомендуемая длина референса: 6-20 секунд, без музыки и сильного шума.
+Файлы в `data/voices/` игнорируются git.
+
+Установка Coqui TTS:
+
+```bash
+make setup
+```
+
+Coqui TTS 0.22.x не поддерживает Python 3.12+, поэтому единое окружение проекта
+собирается на Python 3.11.
+
+При первом запуске XTTS-v2 нужно согласиться с условиями лицензии Coqui CPML.
+Интерактивно модель спросит подтверждение сама. Для автоматического запуска
+можно явно поставить переменную:
+
+```bash
+COQUI_TOS_AGREED=1 make tts-sample-xtts
+```
+
+Тест XTTS:
+
+```bash
+make tts-sample-xtts
+```
+
+Озвучить текущий сценарий через XTTS:
+
+```bash
+make audio-xtts-music
+```
+
+Полный выпуск через XTTS:
+
+```bash
+make final-xtts-llm-music
+```
+
+Можно переопределить пути к референсам через `.env`:
+
+```dotenv
+XTTS_GLEB_VOICE=data/voices/xtts/gleb_alt.wav
+```
+
 Если есть свой loop-файл, его можно указать так:
 
 ```bash
-.venv-tts/bin/python scripts/make_audio.py --provider silero --with-music --music-path data/audio/music/chill_loop.wav
+.venv/bin/python scripts/make_audio.py --provider silero --with-music --music-path data/audio/music/chill_loop.wav
 ```
 
 Или через `.env`:

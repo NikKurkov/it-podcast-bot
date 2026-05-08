@@ -60,6 +60,7 @@ async def synthesize_dialogue_lines(
             tempo=voice_config.get("tempo", 1.0),
             pitch_semitones=voice_config.get("pitch_semitones", 0.0),
             volume_db=voice_config.get("volume_db", 0.0),
+            mic_preset=voice_config.get("mic_preset", "studio_neutral"),
         )
         raw_audio_path.unlink(missing_ok=True)
         rendered_lines.append(

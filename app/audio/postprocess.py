@@ -12,6 +12,7 @@ def process_voice_audio(
     tempo: float = 1.0,
     pitch_semitones: float = 0.0,
     volume_db: float = 0.0,
+    mic_preset: str = "studio_neutral",
 ) -> Path:
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg is not installed or not available in PATH.")
@@ -35,6 +36,7 @@ def process_voice_audio(
         )
 
     filters.extend(_atempo_filters(tempo_after_pitch))
+    filters.extend(_mic_preset_filters(mic_preset))
     if not math.isclose(volume_db, 0.0, abs_tol=0.01):
         filters.append(f"volume={volume_db:.2f}dB")
 
@@ -64,6 +66,44 @@ def process_voice_audio(
         stderr=subprocess.DEVNULL,
     )
     return output_path
+
+
+def _mic_preset_filters(preset: str) -> list[str]:
+    presets = {
+        "studio_neutral": [
+            "highpass=f=75",
+            "lowpass=f=14500",
+            "equalizer=f=3200:t=q:w=1.0:g=0.8",
+            "acompressor=threshold=-20dB:ratio=1.45:attack=8:release=120:makeup=1.5",
+        ],
+        "home_dynamic": [
+            "highpass=f=95",
+            "lowpass=f=12500",
+            "equalizer=f=220:t=q:w=0.9:g=-1.0",
+            "equalizer=f=2600:t=q:w=1.1:g=1.4",
+            "acompressor=threshold=-21dB:ratio=1.65:attack=6:release=100:makeup=1.8",
+        ],
+        "bright_usb": [
+            "highpass=f=105",
+            "lowpass=f=13200",
+            "equalizer=f=180:t=q:w=0.9:g=-0.8",
+            "equalizer=f=4200:t=q:w=1.0:g=1.6",
+            "acompressor=threshold=-22dB:ratio=1.55:attack=5:release=95:makeup=2.0",
+        ],
+        "warm_close": [
+            "highpass=f=65",
+            "lowpass=f=11800",
+            "equalizer=f=180:t=q:w=0.8:g=1.1",
+            "equalizer=f=3600:t=q:w=1.2:g=-0.5",
+            "acompressor=threshold=-19dB:ratio=1.5:attack=10:release=140:makeup=1.4",
+        ],
+    }
+    if preset not in presets:
+        raise ValueError(
+            f"Unknown mic preset: {preset}. Supported presets: {', '.join(sorted(presets))}",
+        )
+
+    return presets[preset]
 
 
 def _atempo_filters(value: float) -> list[str]:

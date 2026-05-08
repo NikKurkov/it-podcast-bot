@@ -67,8 +67,8 @@ class SileroTTSProvider(BaseTTSProvider):
         except ImportError as exc:
             raise RuntimeError(
                 "Silero TTS requires torch. Install a PyTorch build compatible with your Python "
-                "version, then retry. For example, use a Python 3.12 venv for Silero if torch "
-                "is not available for the current Python.",
+                "version, then retry. Run `make setup` to create the unified Python 3.11 "
+                "environment with CPU PyTorch.",
             ) from exc
 
         try:

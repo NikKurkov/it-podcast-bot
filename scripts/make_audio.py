@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wav-output", default="data/audio/latest_episode.wav")
     parser.add_argument("--mp3-output", default="data/audio/latest_episode.mp3")
     parser.add_argument("--lines-dir", default="data/audio/latest_episode_lines")
-    parser.add_argument("--provider", choices=("silero", "espeak"), default=settings.tts_provider)
+    parser.add_argument("--provider", choices=("silero", "xtts", "espeak"), default=settings.tts_provider)
     parser.add_argument("--voice", default=settings.tts_voice)
     parser.add_argument("--speed", type=int, default=settings.tts_speed)
     parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
@@ -37,7 +37,7 @@ def main() -> None:
         raise SystemExit(f"Input file does not exist: {input_path}")
 
     text = input_path.read_text(encoding="utf-8")
-    if args.provider == "silero":
+    if args.provider in {"silero", "xtts"}:
         dialogue_lines = script_to_dialogue_lines(text)
         if not dialogue_lines:
             raise SystemExit("No speakable dialogue lines found.")

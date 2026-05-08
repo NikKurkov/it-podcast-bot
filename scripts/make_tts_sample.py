@@ -74,10 +74,9 @@ def main() -> None:
     except RuntimeError as exc:
         raise SystemExit(
             f"{exc}\n\n"
-            "Silero setup hint:\n"
-            "  1. Use a Python version supported by PyTorch, preferably Python 3.12.\n"
-            "  2. Install torch, numpy and soundfile in that environment.\n"
-            "  3. Re-run: python scripts/make_tts_sample.py\n"
+            "TTS setup hint:\n"
+            "  Create the unified environment: make setup\n"
+            "  For XTTS-v2, add data/voices/xtts/*.wav and accept CPML terms.\n"
         ) from exc
 
     print("Rendered lines:")

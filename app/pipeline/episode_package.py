@@ -103,7 +103,7 @@ def create_episode_package(
     if with_audio:
         audio_source_path = llm_script_path if llm_script_path and llm_script_path.exists() else script_draft_path
         provider_name = (tts_provider or settings.tts_provider).strip().lower()
-        if provider_name == "silero":
+        if provider_name in {"silero", "xtts"}:
             dialogue_lines = script_to_dialogue_lines(audio_source_path.read_text(encoding="utf-8"))
             rendered_lines = asyncio.run(
                 synthesize_dialogue_lines(

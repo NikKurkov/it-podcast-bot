@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     tts_output_dir: str = Field(default="data/audio", alias="TTS_OUTPUT_DIR")
     tts_sample_rate: int = Field(default=48000, alias="TTS_SAMPLE_RATE")
     tts_device: str = Field(default="cpu", alias="TTS_DEVICE")
+    xtts_model_name: str = Field(
+        default="tts_models/multilingual/multi-dataset/xtts_v2",
+        alias="XTTS_MODEL_NAME",
+    )
+    xtts_language: str = Field(default="ru", alias="XTTS_LANGUAGE")
+    xtts_voice_refs_dir: str = Field(default="data/voices/xtts", alias="XTTS_VOICE_REFS_DIR")
+    xtts_mark_voice: str | None = Field(default=None, alias="XTTS_MARK_VOICE")
+    xtts_gleb_voice: str | None = Field(default=None, alias="XTTS_GLEB_VOICE")
+    xtts_nika_voice: str | None = Field(default=None, alias="XTTS_NIKA_VOICE")
+    xtts_artem_voice: str | None = Field(default=None, alias="XTTS_ARTEM_VOICE")
     audio_background_music: bool = Field(default=False, alias="AUDIO_BACKGROUND_MUSIC")
     audio_background_music_volume: float = Field(default=0.16, alias="AUDIO_BACKGROUND_MUSIC_VOLUME")
     audio_background_music_path: str | None = Field(default=None, alias="AUDIO_BACKGROUND_MUSIC_PATH")

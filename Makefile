@@ -1,14 +1,15 @@
 PYTHON := .venv/bin/python
-TTS_PYTHON := .venv-tts/bin/python
 
-.PHONY: setup setup-tts test check collect daily final final-silero final-silero-llm final-silero-llm-music stats sources list selected auto-select show rank csv digest script validate-script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music tts-sample tts-sample-silero episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels
+.PHONY: setup setup-tts setup-xtts test check collect daily final final-silero final-silero-llm final-silero-llm-music final-xtts-llm-music stats sources list selected auto-select show rank csv digest script validate-script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music audio-xtts audio-xtts-music tts-sample tts-sample-silero tts-sample-xtts episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels
 
 setup:
-	python -m venv .venv
-	$(PYTHON) -m pip install -r requirements.txt
+	bash scripts/setup_env.sh
 
 setup-tts:
 	bash scripts/setup_tts_env.sh
+
+setup-xtts:
+	bash scripts/setup_xtts_env.sh
 
 test:
 	$(PYTHON) -m pytest
@@ -26,13 +27,16 @@ final:
 	$(PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --with-audio
 
 final-silero:
-	$(TTS_PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --with-audio --tts-provider silero
+	$(PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --with-audio --tts-provider silero
 
 final-silero-llm:
-	$(TTS_PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --dialogue-script --with-audio --tts-provider silero
+	$(PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --dialogue-script --with-audio --tts-provider silero
 
 final-silero-llm-music:
-	$(TTS_PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --dialogue-script --with-audio --tts-provider silero --with-music
+	$(PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --dialogue-script --with-audio --tts-provider silero --with-music
+
+final-xtts-llm-music:
+	TTS_PROVIDER=xtts $(PYTHON) scripts/final_run.py --collect-limit 20 --top 5 --llm-profile final --dialogue-script --with-audio --tts-provider xtts --with-music
 
 stats:
 	$(PYTHON) scripts/db_stats.py
@@ -89,16 +93,25 @@ audio:
 	$(PYTHON) scripts/make_audio.py
 
 audio-silero:
-	$(TTS_PYTHON) scripts/make_audio.py --provider silero
+	$(PYTHON) scripts/make_audio.py --provider silero
 
 audio-silero-music:
-	$(TTS_PYTHON) scripts/make_audio.py --provider silero --with-music
+	$(PYTHON) scripts/make_audio.py --provider silero --with-music
+
+audio-xtts:
+	TTS_PROVIDER=xtts $(PYTHON) scripts/make_audio.py --provider xtts
+
+audio-xtts-music:
+	TTS_PROVIDER=xtts $(PYTHON) scripts/make_audio.py --provider xtts --with-music
 
 tts-sample:
 	$(PYTHON) scripts/make_tts_sample.py
 
 tts-sample-silero:
-	$(TTS_PYTHON) scripts/make_tts_sample.py
+	$(PYTHON) scripts/make_tts_sample.py
+
+tts-sample-xtts:
+	TTS_PROVIDER=xtts $(PYTHON) scripts/make_tts_sample.py
 
 episode:
 	$(PYTHON) scripts/make_episode_draft.py --limit 10
@@ -107,10 +120,10 @@ episode-package:
 	$(PYTHON) scripts/make_episode_package.py --limit 10 --llm-profile final
 
 episode-package-silero:
-	$(TTS_PYTHON) scripts/make_episode_package.py --limit 10 --llm-profile final --dialogue-script --with-audio --tts-provider silero
+	$(PYTHON) scripts/make_episode_package.py --limit 10 --llm-profile final --dialogue-script --with-audio --tts-provider silero
 
 episode-package-silero-music:
-	$(TTS_PYTHON) scripts/make_episode_package.py --limit 10 --llm-profile final --dialogue-script --with-audio --tts-provider silero --with-music
+	$(PYTHON) scripts/make_episode_package.py --limit 10 --llm-profile final --dialogue-script --with-audio --tts-provider silero --with-music
 
 episodes:
 	$(PYTHON) scripts/list_episode_drafts.py

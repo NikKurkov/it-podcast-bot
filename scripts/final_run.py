@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top", type=int, default=5)
     parser.add_argument("--llm-profile", choices=("default", "fast", "final"), default=None)
     parser.add_argument("--with-audio", action="store_true")
-    parser.add_argument("--tts-provider", choices=("silero", "espeak"), default=settings.tts_provider)
+    parser.add_argument("--tts-provider", choices=("silero", "xtts", "espeak"), default=settings.tts_provider)
     parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
     parser.add_argument("--music-volume", type=float, default=settings.audio_background_music_volume)
     parser.add_argument("--music-path", default=settings.audio_background_music_path)
