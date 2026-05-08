@@ -23,12 +23,12 @@ _PROSODY_BY_CHARACTER = {
         "mic_preset": "home_dynamic",
     },
     "nika": {
-        "speaker": "baya",
-        "tempo": 1.08,
-        "pitch_semitones": 1.2,
-        "volume_db": 0.7,
-        "pause_after_ms": 380,
-        "mic_preset": "bright_usb",
+        "speaker": "xenia",
+        "tempo": 1.01,
+        "pitch_semitones": -0.35,
+        "volume_db": 0.4,
+        "pause_after_ms": 430,
+        "mic_preset": "studio_neutral",
     },
     "artem": {
         "speaker": "aidar",
