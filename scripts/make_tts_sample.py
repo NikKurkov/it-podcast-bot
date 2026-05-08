@@ -55,6 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render a local multi-speaker TTS sample.")
     parser.add_argument("--output", default="data/audio/sample_podcast.wav")
     parser.add_argument("--lines-dir", default="data/audio/sample_episode")
+    parser.add_argument("--provider", choices=("silero", "xtts"), default=settings.tts_provider)
     parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
     parser.add_argument("--music-volume", type=float, default=settings.audio_background_music_volume)
     parser.add_argument("--music-path", default=settings.audio_background_music_path)
@@ -69,6 +70,7 @@ def main() -> None:
             synthesize_dialogue_lines(
                 SAMPLE_DIALOGUE,
                 Path(args.lines_dir),
+                provider_name=args.provider,
             ),
         )
     except RuntimeError as exc:
@@ -87,7 +89,10 @@ def main() -> None:
         return
 
     pauses = [
-        get_voice_config(line.speaker).get("pause_after_ms", line.pause_after_ms)
+        get_voice_config(line.speaker, provider_name=args.provider).get(
+            "pause_after_ms",
+            line.pause_after_ms,
+        )
         for line in SAMPLE_DIALOGUE
     ]
     output_path = assemble_podcast(rendered_lines, Path(args.output), pauses_ms=pauses)

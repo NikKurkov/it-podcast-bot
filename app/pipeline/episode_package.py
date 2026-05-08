@@ -109,6 +109,7 @@ def create_episode_package(
                 synthesize_dialogue_lines(
                     dialogue_lines,
                     package_path / "audio_lines",
+                    provider_name=provider_name,
                 ),
             )
             assemble_podcast(

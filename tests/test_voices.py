@@ -49,3 +49,27 @@ def test_get_voice_config_can_switch_to_xtts(monkeypatch) -> None:
 
     assert config["provider"] == "xtts"
     assert config["speaker"] == "data/voices/custom_gleb.wav"
+
+
+def test_get_voice_config_accepts_provider_override(monkeypatch) -> None:
+    from app.audio import voices
+
+    monkeypatch.setattr(voices.settings, "tts_provider", "silero")
+    monkeypatch.setattr(voices.settings, "xtts_mark_voice", "data/voices/custom_mark.wav")
+
+    config = get_voice_config("mark", provider_name="xtts")
+
+    assert config["provider"] == "xtts"
+    assert config["speaker"] == "data/voices/custom_mark.wav"
+
+
+def test_get_voice_config_xtts_falls_back_to_character_key(monkeypatch) -> None:
+    from app.audio import voices
+
+    monkeypatch.setattr(voices.settings, "tts_provider", "silero")
+    monkeypatch.setattr(voices.settings, "xtts_nika_voice", None)
+
+    config = get_voice_config("nika", provider_name="xtts")
+
+    assert config["provider"] == "xtts"
+    assert config["speaker"] == "nika"

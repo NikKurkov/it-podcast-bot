@@ -37,13 +37,14 @@ def get_tts_provider(provider_name: str) -> BaseTTSProvider:
 async def synthesize_dialogue_lines(
     lines: list[DialogueLine],
     output_dir: Path,
+    provider_name: str | None = None,
 ) -> list[RenderedLine]:
     output_dir.mkdir(parents=True, exist_ok=True)
     rendered_lines: list[RenderedLine] = []
 
     for index, line in enumerate(lines, start=1):
         character_key = resolve_character_key(line.speaker)
-        voice_config = get_voice_config(character_key)
+        voice_config = get_voice_config(character_key, provider_name=provider_name)
         provider = get_tts_provider(voice_config["provider"])
         audio_path = output_dir / f"{index:03d}_{character_key}.wav"
         raw_audio_path = output_dir / f"{index:03d}_{character_key}.raw.wav"

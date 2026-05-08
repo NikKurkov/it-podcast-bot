@@ -46,6 +46,7 @@ def main() -> None:
             synthesize_dialogue_lines(
                 dialogue_lines,
                 Path(args.lines_dir),
+                provider_name=args.provider,
             ),
         )
         wav_path = assemble_podcast(
@@ -54,7 +55,7 @@ def main() -> None:
             pauses_ms=[line.pause_after_ms for line in dialogue_lines],
         )
         print(f"Saved WAV audio to {wav_path}")
-        print(f"Rendered {len(rendered_lines)} Silero dialogue lines to {args.lines_dir}")
+        print(f"Rendered {len(rendered_lines)} {args.provider} dialogue lines to {args.lines_dir}")
     else:
         wav_path = synthesize_with_espeak(
             text,

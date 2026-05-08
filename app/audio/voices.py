@@ -41,15 +41,19 @@ _PROSODY_BY_CHARACTER = {
 }
 
 
-def _provider_for_character() -> str:
-    provider = settings.tts_provider.strip().lower()
+def _provider_for_character(provider_name: str | None = None) -> str:
+    provider = (provider_name or settings.tts_provider).strip().lower()
     if provider in {"silero", "xtts"}:
         return provider
     return "silero"
 
 
-def _speaker_for_character(character_key: str, silero_speaker: str) -> str:
-    if _provider_for_character() != "xtts":
+def _speaker_for_character(
+    character_key: str,
+    silero_speaker: str,
+    provider_name: str | None = None,
+) -> str:
+    if _provider_for_character(provider_name) != "xtts":
         return silero_speaker
 
     explicit_paths = {
@@ -85,13 +89,13 @@ CHARACTER_VOICES = {
 }
 
 
-def get_voice_config(character: str) -> dict:
+def get_voice_config(character: str, provider_name: str | None = None) -> dict:
     profile = get_character_profile(character)
     prosody = _PROSODY_BY_CHARACTER.get(profile.key, {})
     silero_speaker = prosody.get("speaker", profile.default_voice)
     return {
-        "provider": _provider_for_character(),
-        "speaker": _speaker_for_character(profile.key, silero_speaker),
+        "provider": _provider_for_character(provider_name),
+        "speaker": _speaker_for_character(profile.key, silero_speaker, provider_name),
         "sample_rate": settings.tts_sample_rate,
         "pause_after_ms": prosody.get("pause_after_ms", profile.pause_after_ms),
         "tempo": prosody.get("tempo", 1.0),
