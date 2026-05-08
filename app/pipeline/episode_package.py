@@ -85,7 +85,7 @@ def create_episode_package(
             llm_text, validation = rewrite_validated_dialogue_script_draft(
                 draft_text,
                 model=llm_model,
-                attempts=2,
+                attempts=4,
             )
             script_validation_issues = [
                 {

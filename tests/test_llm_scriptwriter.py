@@ -163,3 +163,24 @@ artem: 这里出现了中文翻译块。
         assert "invalid dialogue script" in str(exc)
     else:
         raise AssertionError("Expected RuntimeError")
+
+
+def test_rewrite_validated_dialogue_script_draft_raises_on_persistent_quality_issue(
+    monkeypatch,
+) -> None:
+    def fake_rewrite(*args, **kwargs):
+        return """
+mark: Сегодня мы поговорим о риске.
+nika: А если по-человечески?
+gleb: Я видел похожие истории.
+artem: Здесь важно проверить контроль доступа.
+"""
+
+    monkeypatch.setattr(scriptwriter, "rewrite_dialogue_script_draft", fake_rewrite)
+
+    try:
+        scriptwriter.rewrite_validated_dialogue_script_draft("Черновик", attempts=2)
+    except RuntimeError as exc:
+        assert "generic filler" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")

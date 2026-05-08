@@ -157,7 +157,7 @@ artem: Здесь важно проверить контроль доступа.
     )
 
     assert result.has_errors is False
-    assert result.has_blocking_issues is False
+    assert result.has_blocking_issues is True
     assert result.has_quality_retry_issues is True
     assert any(issue.code == "generic_filler" for issue in result.issues)
 
@@ -173,6 +173,7 @@ artem: Здесь важно проверить контроль доступа.
     )
 
     assert result.has_errors is False
+    assert result.has_blocking_issues is True
     assert result.has_quality_retry_issues is True
     assert len([issue for issue in result.issues if issue.code == "generic_filler"]) >= 2
 

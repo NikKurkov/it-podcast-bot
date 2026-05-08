@@ -56,6 +56,7 @@ _GENERIC_FILLER_PHRASES = {
     "до встречи",
 }
 _QUALITY_RETRY_CODES = {"generic_filler", "missing_character", "speaker_streak"}
+_BLOCKING_QUALITY_CODES = {"generic_filler"}
 
 
 @dataclass(frozen=True)
@@ -79,7 +80,9 @@ class ScriptValidationResult:
     @property
     def has_blocking_issues(self) -> bool:
         return any(
-            issue.severity == "error" or issue.code in {"meta_phrase", "repeated_phrase"}
+            issue.severity == "error"
+            or issue.code in {"meta_phrase", "repeated_phrase"}
+            or issue.code in _BLOCKING_QUALITY_CODES
             for issue in self.issues
         )
 
