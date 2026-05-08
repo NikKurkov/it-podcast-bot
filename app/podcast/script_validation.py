@@ -174,14 +174,23 @@ def repair_dialogue_script_text(
     line_numbers_to_remove = {
         issue.line_number for issue in validation.issues if issue.code == "meta_phrase" and issue.line_number
     }
-    if not line_numbers_to_remove:
+    generic_filler_line_numbers = {
+        issue.line_number
+        for issue in validation.issues
+        if issue.code == "generic_filler" and issue.line_number
+    }
+    if not line_numbers_to_remove and not generic_filler_line_numbers:
         return script_text
 
-    repaired_lines = [
-        line
-        for line_number, line in enumerate(script_text.splitlines(), start=1)
-        if line_number not in line_numbers_to_remove
-    ]
+    repaired_lines = []
+    for line_number, line in enumerate(script_text.splitlines(), start=1):
+        if line_number in line_numbers_to_remove:
+            continue
+        if line_number in generic_filler_line_numbers:
+            line = _remove_generic_filler_sentences(line)
+            if not line.strip():
+                continue
+        repaired_lines.append(line)
     return "\n".join(repaired_lines).strip()
 
 
@@ -303,6 +312,30 @@ def _append_generic_filler_phrase_issues(
                     code="generic_filler",
                 ),
             )
+
+
+def _remove_generic_filler_sentences(line: str) -> str:
+    match = _SPEAKER_LINE_RE.match(line.strip())
+    if not match:
+        return "" if _contains_generic_filler(line) else line
+
+    speaker = match.group("speaker")
+    text = match.group("text").strip()
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    kept_sentences = [
+        sentence.strip()
+        for sentence in sentences
+        if sentence.strip() and not _contains_generic_filler(sentence)
+    ]
+    if not kept_sentences:
+        return ""
+    return f"{speaker}: {' '.join(kept_sentences)}"
+
+
+def _contains_generic_filler(text: str) -> bool:
+    normalized_text = text.casefold().replace("ё", "е")
+    normalized_phrases = {phrase.replace("ё", "е") for phrase in _GENERIC_FILLER_PHRASES}
+    return any(phrase in normalized_text for phrase in normalized_phrases)
 
 
 def _append_unexpected_language_issues(

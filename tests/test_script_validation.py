@@ -194,3 +194,34 @@ nika: Спасибо за внимание.
     assert "черновик" not in repaired
     assert "Спасибо за внимание" in repaired
     assert result.has_blocking_issues is False
+
+
+def test_repair_dialogue_script_text_removes_generic_filler_sentence() -> None:
+    script_text = """
+mark: Риск не в анонсе, а в зависимости команды от внешнего сервиса.
+nika: А если по-человечески?
+gleb: Я видел похожие истории.
+artem: Команде нужен план отката и проверка доступа. Будем следить за развитием событий.
+"""
+
+    repaired = repair_dialogue_script_text(script_text)
+    result = validate_dialogue_script(repaired)
+
+    assert "Будем следить" not in repaired
+    assert "план отката" in repaired
+    assert result.has_blocking_issues is False
+
+
+def test_repair_dialogue_script_text_removes_generic_filler_only_line() -> None:
+    script_text = """
+mark: Риск не в анонсе, а в зависимости команды от внешнего сервиса.
+nika: До встречи!
+gleb: Я видел похожие истории.
+artem: Команде нужен план отката и проверка доступа.
+"""
+
+    repaired = repair_dialogue_script_text(script_text)
+    result = validate_dialogue_script(repaired)
+
+    assert "До встречи" not in repaired
+    assert result.has_blocking_issues is False
