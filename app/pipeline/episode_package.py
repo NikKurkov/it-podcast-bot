@@ -25,6 +25,7 @@ from app.pipeline.daily_digest import (
     export_digest_markdown,
 )
 from app.pipeline.script_draft import export_script_markdown
+from app.podcast.script_quality import postprocess_dialogue_script, write_script_quality_report
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,7 @@ def create_episode_package(
     audio_mp3_path = package_path / "audio.mp3" if with_audio else None
     audio_voice_wav_path = package_path / "audio_voice.wav" if with_audio and with_music else None
     audio_report_path = package_path / "audio_report.json" if with_audio else None
+    script_quality_report_path = package_path / "script_quality_report.json" if llm_profile else None
     metadata_path = package_path / "metadata.json"
 
     export_digest_markdown(digest_items, digest_markdown_path)
@@ -98,6 +100,9 @@ def create_episode_package(
             if validation.has_blocking_issues:
                 messages = "; ".join(issue.message for issue in validation.issues)
                 raise RuntimeError(f"Generated dialogue script failed validation: {messages}")
+            postprocess_result = postprocess_dialogue_script(llm_text)
+            llm_text = postprocess_result.script_text
+            write_script_quality_report(postprocess_result.report, script_quality_report_path)
         else:
             llm_text = rewrite_script_draft(draft_text, model=llm_model)
         llm_script_path.write_text(llm_text + "\n", encoding="utf-8")
@@ -168,6 +173,9 @@ def create_episode_package(
             "audio_mp3": str(audio_mp3_path) if audio_mp3_path else None,
             "audio_voice_wav": str(audio_voice_wav_path) if audio_voice_wav_path else None,
             "audio_report": str(audio_report_path) if audio_report_path else None,
+            "script_quality_report": str(script_quality_report_path)
+            if script_quality_report_path
+            else None,
         },
     }
     metadata_path.write_text(

@@ -35,6 +35,11 @@ def format_episode_report(
         lines.extend(["", "Selected news:"])
         lines.extend(f"  {line}" for line in selected_posts)
 
+    quality_summary = _script_quality_summary(package.path / "script_quality_report.json")
+    if quality_summary:
+        lines.extend(["", "Script quality:"])
+        lines.extend(f"  {line}" for line in quality_summary)
+
     return "\n".join(lines)
 
 
@@ -45,6 +50,7 @@ def _existing_files(package: EpisodePackage) -> list[tuple[str, Path]]:
         ("llm_script", package.llm_script_path),
         ("audio_mp3", package.audio_mp3_path),
         ("audio_voice", package.audio_voice_wav_path),
+        ("script_quality", package.path / "script_quality_report.json"),
         ("metadata", package.metadata_path),
     ]
     return [(label, path) for label, path in candidates if path and path.exists()]
@@ -66,6 +72,34 @@ def _audio_summary(report_path: Path) -> list[str]:
         sample_rate = item.get("sample_rate")
         codec = item.get("codec")
         lines.append(f"{path}: {duration}, {sample_rate} Hz, {codec}")
+    return lines
+
+
+def _script_quality_summary(report_path: Path) -> list[str]:
+    if not report_path.exists():
+        return []
+
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+
+    lines = [
+        f"lines: {report.get('lines_count', 0)}",
+        f"opening: {report.get('opening_present')}",
+        f"rundown: {report.get('rundown_present')}",
+        f"transitions: {report.get('transition_lines', 0)}",
+    ]
+    warnings = report.get("warnings") or []
+    if warnings:
+        lines.append(f"warnings: {', '.join(warnings)}")
+    postprocess = report.get("postprocess") or {}
+    if postprocess:
+        lines.append(
+            "postprocess: "
+            f"changed={postprocess.get('changed')}, "
+            f"changed_lines={postprocess.get('changed_lines', 0)}",
+        )
     return lines
 
 

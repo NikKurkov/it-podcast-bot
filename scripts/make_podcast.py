@@ -11,6 +11,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fresh", action="store_true", help="Clean generated data before running.")
     parser.add_argument("--no-collect", action="store_true", help="Reuse already collected posts.")
     parser.add_argument("--script-only", action="store_true", help="Generate package and script without audio.")
+    parser.add_argument("--audio-only", action="store_true", help="Render audio for the latest package.")
+    parser.add_argument("--remix-only", action="store_true", help="Only remix music for the latest package.")
     parser.add_argument("--audio", action="store_true", help="Generate audio too.")
     parser.add_argument("--with-music", action="store_true", help="Mix background music into audio.")
     parser.add_argument("--tts-provider", choices=("silero", "xtts", "espeak"), default="xtts")
@@ -25,6 +27,22 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     python = PROJECT_ROOT / ".venv" / "bin" / "python"
+
+    if args.audio_only or args.remix_only:
+        render_args = [
+            str(python),
+            "scripts/render_episode_audio.py",
+            "--episode",
+            "latest",
+            "--provider",
+            args.tts_provider,
+        ]
+        if args.with_music or args.remix_only:
+            render_args.append("--with-music")
+        if args.remix_only:
+            render_args.append("--remix-only")
+        _run(render_args)
+        return
 
     if args.fresh:
         _run([str(python), "scripts/clean_workspace.py", "--yes"])
