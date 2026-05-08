@@ -41,15 +41,21 @@ _OVERUSED_PHRASES = {
     "люблю новости, после которых",
 }
 _GENERIC_FILLER_PHRASES = {
+    "сегодня мы поговорим",
     "что же нас ждет",
     "что же нас ждёт",
+    "давайте разберем",
+    "давайте разберём",
     "давайте разберемся по порядку",
     "давайте разберёмся по порядку",
+    "это интересно",
     "это действительно интересно",
     "сегодня мы узнали",
     "будем следить",
+    "следите за новостями",
     "до встречи",
 }
+_QUALITY_RETRY_CODES = {"generic_filler", "missing_character", "speaker_streak"}
 
 
 @dataclass(frozen=True)
@@ -76,6 +82,10 @@ class ScriptValidationResult:
             issue.severity == "error" or issue.code in {"meta_phrase", "repeated_phrase"}
             for issue in self.issues
         )
+
+    @property
+    def has_quality_retry_issues(self) -> bool:
+        return any(issue.code in _QUALITY_RETRY_CODES for issue in self.issues)
 
 
 def validate_dialogue_script(

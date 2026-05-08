@@ -158,7 +158,23 @@ artem: Здесь важно проверить контроль доступа.
 
     assert result.has_errors is False
     assert result.has_blocking_issues is False
+    assert result.has_quality_retry_issues is True
     assert any(issue.code == "generic_filler" for issue in result.issues)
+
+
+def test_validate_dialogue_script_warns_on_broad_intro_filler() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Сегодня мы поговорим о новых бенчмарках.
+nika: Давайте разберём, как это влияет на команды.
+gleb: Я видел похожие истории.
+artem: Здесь важно проверить контроль доступа.
+""",
+    )
+
+    assert result.has_errors is False
+    assert result.has_quality_retry_issues is True
+    assert len([issue for issue in result.issues if issue.code == "generic_filler"]) >= 2
 
 
 def test_repair_dialogue_script_text_removes_meta_lines() -> None:

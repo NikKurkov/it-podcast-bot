@@ -111,6 +111,41 @@ nika: Спасибо за внимание.
     assert "Спасибо за внимание" in script_text
 
 
+def test_rewrite_validated_dialogue_script_draft_retries_quality_warnings(monkeypatch) -> None:
+    outputs = iter(
+        [
+            """
+mark: Сегодня мы поговорим о практическом риске.
+nika: А если по-человечески?
+gleb: Я видел похожие истории.
+artem: Здесь важно проверить доступы и план отката.
+""",
+            """
+mark: Риск в этой новости не в громком анонсе, а в том, как команда будет проверять изменения.
+nika: То есть завтра стоит понять, что именно меняется в рабочем процессе?
+gleb: Я видел похожие истории: сначала обещают экономию времени, потом ищут владельца поломки.
+artem: Команде нужен контроль доступа, журнал изменений и понятный план отката.
+""",
+        ],
+    )
+    seen_drafts = []
+
+    def fake_rewrite(draft_text, *args, **kwargs):
+        seen_drafts.append(draft_text)
+        return next(outputs)
+
+    monkeypatch.setattr(scriptwriter, "rewrite_dialogue_script_draft", fake_rewrite)
+
+    script_text, validation = scriptwriter.rewrite_validated_dialogue_script_draft(
+        "Черновик",
+        attempts=2,
+    )
+
+    assert validation.has_quality_retry_issues is False
+    assert "Сегодня мы поговорим" not in script_text
+    assert "Редакторские замечания" in seen_drafts[1]
+
+
 def test_rewrite_validated_dialogue_script_draft_raises_after_attempts(monkeypatch) -> None:
     def fake_rewrite(*args, **kwargs):
         return """

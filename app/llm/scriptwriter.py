@@ -71,25 +71,49 @@ def rewrite_validated_dialogue_script_draft(
 
     last_script_text = ""
     last_validation: ScriptValidationResult | None = None
+    best_script_text = ""
+    best_validation: ScriptValidationResult | None = None
+    current_draft_text = draft_text
     for attempt in range(1, attempts + 1):
         attempt_temperature = max(0.15, temperature - ((attempt - 1) * 0.08))
         script_text = rewrite_dialogue_script_draft(
-            draft_text,
+            current_draft_text,
             model=model,
             temperature=attempt_temperature,
         )
         validation = validate_dialogue_script(script_text)
-        if not validation.has_blocking_issues:
+        if not validation.has_blocking_issues and not validation.has_quality_retry_issues:
             return script_text, validation
+        if not validation.has_blocking_issues:
+            best_script_text = script_text
+            best_validation = validation
+            current_draft_text = _append_validation_feedback(draft_text, validation)
+            last_script_text = script_text
+            last_validation = validation
+            continue
 
         repaired_script_text = repair_dialogue_script_text(script_text, validation)
         if repaired_script_text != script_text:
             repaired_validation = validate_dialogue_script(repaired_script_text)
-            if not repaired_validation.has_blocking_issues:
+            if (
+                not repaired_validation.has_blocking_issues
+                and not repaired_validation.has_quality_retry_issues
+            ):
                 return repaired_script_text, repaired_validation
+            if not repaired_validation.has_blocking_issues:
+                best_script_text = repaired_script_text
+                best_validation = repaired_validation
+                current_draft_text = _append_validation_feedback(draft_text, repaired_validation)
+                last_script_text = repaired_script_text
+                last_validation = repaired_validation
+                continue
 
         last_script_text = script_text
         last_validation = validation
+        current_draft_text = _append_validation_feedback(draft_text, validation)
+
+    if best_script_text and best_validation:
+        return best_script_text, best_validation
 
     report = format_validation_report(last_validation) if last_validation else "validation did not run"
     raise RuntimeError(
@@ -107,6 +131,15 @@ def model_for_profile(profile: str) -> str:
         return settings.llm_model
 
     raise ValueError(f"Unknown LLM profile: {profile}")
+
+
+def _append_validation_feedback(draft_text: str, validation: ScriptValidationResult) -> str:
+    return (
+        f"{draft_text.rstrip()}\n\n"
+        "Редакторские замечания к предыдущей попытке. Перепиши сценарий заново, "
+        "исправив все пункты ниже, но не добавляя новых фактов:\n"
+        f"{format_validation_report(validation)}"
+    )
 
 
 def _load_system_prompt() -> str:
