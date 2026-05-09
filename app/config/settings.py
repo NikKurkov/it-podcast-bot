@@ -20,7 +20,10 @@ class Settings(BaseSettings):
     telegram_publish_channel_id: str | None = Field(default=None, alias="TELEGRAM_PUBLISH_CHANNEL_ID")
     publish_telegram_on_final: bool = Field(default=False, alias="PUBLISH_TELEGRAM_ON_FINAL")
     podcast_title: str = Field(default="НикКаст", alias="PODCAST_TITLE")
-    podcast_cover_image: str | None = Field(default="assets/nikcast_cover.png", alias="PODCAST_COVER_IMAGE")
+    podcast_cover_image: str | None = Field(
+        default="assets/nikcast_cover_256.jpg",
+        alias="PODCAST_COVER_IMAGE",
+    )
     exclude_keywords_file: str = Field(default="config/exclude_keywords.txt", alias="EXCLUDE_KEYWORDS_FILE")
     source_weights_file: str = Field(default="config/source_weights.txt", alias="SOURCE_WEIGHTS_FILE")
     final_collect_limit: int = Field(default=20, alias="FINAL_COLLECT_LIMIT")
