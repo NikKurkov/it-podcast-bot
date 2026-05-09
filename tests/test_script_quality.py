@@ -4,6 +4,7 @@ from app.podcast.script_quality import (
     postprocess_dialogue_script,
     quality_gate_allows_tts,
 )
+from app.config.settings import settings
 
 
 def test_postprocess_dialogue_script_repairs_and_reports_changes() -> None:
@@ -141,7 +142,7 @@ artem: Проверьте зеркала и план отката.
     report = build_script_quality_report(fixed)
 
     assert "Добрый день" in fixed
-    assert "НикКаст" in fixed
+    assert settings.podcast_title in fixed
     assert "В выпуске:" in fixed
     assert report["opening_present"] is True
     assert report["rundown_present"] is True

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.audio.dialogue import script_to_dialogue_lines
 from app.audio.voice_direction import apply_voice_direction
+from app.config.settings import settings
 from app.podcast.characters import get_character_keys
 from app.podcast.prompt_context import format_russian_episode_date
 from app.podcast.script_validation import (
@@ -78,7 +79,7 @@ def ensure_opening_and_rundown(
         prefix.append(
             "mark: "
             f"Добрый день, сегодня {format_russian_episode_date(episode_date)}, "
-            "и вы слушаете НикКаст с обзором главных новостей в мире айти. "
+            f"и вы слушаете {settings.podcast_title} с обзором главных новостей в мире айти. "
             "Разбираем, где в этих историях технический риск, а где просто шум.",
         )
     if not report["rundown_present"]:
@@ -288,8 +289,7 @@ def _remove_duplicate_opening_lines(lines: list[str]) -> list[str]:
     result = []
     opening_seen = False
     for line in lines:
-        normalized = line.casefold().replace("ё", "е")
-        has_opening = "добрый день" in normalized and "никкаст" in normalized
+        has_opening = _has_opening(line)
         if has_opening and opening_seen:
             continue
         if has_opening:
@@ -336,7 +336,11 @@ def _repeated_openers(dialogue_lines) -> dict[str, int]:
 
 def _has_opening(first_text: str) -> bool:
     normalized = first_text.casefold().replace("ё", "е")
-    return "добрый день" in normalized and "никкаст" in normalized
+    podcast_title = settings.podcast_title.casefold().replace("ё", "е")
+    return "добрый день" in normalized and (
+        podcast_title in normalized
+        or ("вы слушаете" in normalized and "с обзором" in normalized)
+    )
 
 
 def _count_changed_lines(before: str, after: str) -> int:

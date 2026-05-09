@@ -34,7 +34,7 @@ def test_build_episode_caption_uses_metadata_topics(tmp_path: Path) -> None:
 
     caption = build_episode_caption(package_path)
 
-    assert "НикКаст #001 от 09.05.2026" in caption
+    assert f"{publisher.settings.podcast_title} #001 от 09.05.2026" in caption
     assert "<b>Темы выпуска:</b>" in caption
     assert "GitHub снова штормит" in caption
     assert "- GitHub снова штормит у части разработчиков." in caption
@@ -57,7 +57,8 @@ def test_prepare_publish_audio_copies_with_nice_filename_without_cover(
 
     output_path = prepare_publish_audio(package_path)
 
-    assert output_path.name == "НикКаст_001_от_09-05-2026.mp3"
+    expected_title = publisher.settings.podcast_title.replace(" ", "_")
+    assert output_path.name == f"{expected_title}_001_от_09-05-2026.mp3"
     assert output_path.read_bytes() == b"fake mp3"
 
 

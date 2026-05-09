@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from app.config.settings import settings
 from app.podcast.prompt_context import build_scriptwriter_context, format_russian_episode_date
 
 
@@ -12,3 +13,4 @@ def test_build_scriptwriter_context_contains_episode_date() -> None:
 
     assert "character_profiles" in context
     assert "episode_date_ru" in context
+    assert context["podcast_title"] == settings.podcast_title

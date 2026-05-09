@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from app.config.settings import settings
 from app.podcast.characters import format_character_profiles_for_prompt
 
 _RU_MONTHS_GENITIVE = {
@@ -55,6 +56,7 @@ def build_scriptwriter_context() -> dict:
     return {
         "character_profiles": format_character_profiles_for_prompt(),
         "episode_date_ru": format_russian_episode_date(),
+        "podcast_title": settings.podcast_title,
     }
 
 
