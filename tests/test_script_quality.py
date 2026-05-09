@@ -37,6 +37,22 @@ artem: Проверьте зеркала и план отката.
     assert report["transition_lines"] >= 1
 
 
+def test_build_script_quality_report_tracks_liveness_markers() -> None:
+    report = build_script_quality_report(
+        """
+mark: Добрый день, сегодня 09 мая, и вы слушаете НикКаст с обзором главных новостей в мире айти. Проверяем риски недели.
+nika: В выпуске: GitHub, Claude и инфраструктура.
+gleb: Ника, выбирай следующую тему, только без рекламного блеска.
+nika: Подожди, Глеб, здесь как раз важна практическая часть.
+artem: Марк, технический риск в том, что команда теряет воспроизводимость сборки.
+mark: Артём, зафиксируем вывод: проверьте зеркала и план отката.
+""",
+    )
+
+    assert report["direct_address_lines"] >= 3
+    assert report["interruption_lines"] >= 1
+
+
 def test_ensure_opening_and_rundown_adds_missing_intro() -> None:
     script = """
 gleb: GitHub снова проверяет терпение команд.

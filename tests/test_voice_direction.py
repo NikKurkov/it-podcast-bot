@@ -32,3 +32,14 @@ def test_apply_voice_direction_marks_human_aside() -> None:
 
     assert line.emotion == "aside"
     assert line.pause_after_ms <= 380
+
+
+def test_apply_voice_direction_marks_interruption() -> None:
+    line = apply_voice_direction(
+        "nika",
+        "Подожди, подожди, но ведь здесь ломается весь план релиза.",
+        base_pause_after_ms=520,
+    )
+
+    assert line.emotion == "interruption"
+    assert line.pause_after_ms <= 340

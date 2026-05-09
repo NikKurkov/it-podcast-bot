@@ -14,6 +14,12 @@ from app.podcast.script_validation import (
     validate_dialogue_script,
 )
 
+_DIRECT_ADDRESS_RE = re.compile(r"\b(марк|ника|глеб|арт[её]м)\b", re.IGNORECASE)
+_INTERRUPTION_RE = re.compile(
+    r"(подожди|секунду|ой,\s*да\s+ладно|стоп|погоди|можно\s+я)",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class ScriptPostprocessResult:
@@ -107,6 +113,9 @@ def build_script_quality_report(
     ]
     emotion_counts = Counter(line.emotion or "plain" for line in directed_lines)
     first_text = dialogue_lines[0].text if dialogue_lines else ""
+    direct_address_lines = sum(1 for line in dialogue_lines if _DIRECT_ADDRESS_RE.search(line.text))
+    interruption_lines = sum(1 for line in dialogue_lines if _INTERRUPTION_RE.search(line.text))
+    repeated_openers = _repeated_openers(dialogue_lines)
 
     report = {
         "lines_count": len(dialogue_lines),
@@ -115,8 +124,11 @@ def build_script_quality_report(
         "rundown_present": any(line.emotion == "rundown" for line in directed_lines[:4]),
         "transition_lines": emotion_counts.get("transition", 0),
         "aside_lines": emotion_counts.get("aside", 0),
+        "interruption_lines": interruption_lines,
+        "direct_address_lines": direct_address_lines,
         "verdict_lines": emotion_counts.get("verdict", 0),
         "emotion_counts": dict(emotion_counts),
+        "repeated_openers": repeated_openers,
         "validation_issues": validation_issues or [],
         "warnings": [],
     }
@@ -127,6 +139,13 @@ def build_script_quality_report(
         report["warnings"].append("rundown_missing")
     if len(dialogue_lines) >= 12 and report["transition_lines"] < 2:
         report["warnings"].append("few_transitions")
+    if len(dialogue_lines) >= 16 and direct_address_lines < 3:
+        report["warnings"].append("few_direct_addresses")
+    if len(dialogue_lines) >= 16 and interruption_lines < 1 and report["aside_lines"] < 1:
+        report["warnings"].append("too_clean_dialogue")
+    for opener, count in repeated_openers.items():
+        if count > 1:
+            report["warnings"].append(f"repeated_opener:{opener}")
     for speaker in get_character_keys():
         if speaker_counts.get(speaker, 0) < 2:
             report["warnings"].append(f"underused_{speaker}")
@@ -179,6 +198,24 @@ def _short_topic(text: str, max_chars: int = 90) -> str:
     if len(clean_text) <= max_chars:
         return clean_text
     return f"{clean_text[: max_chars - 3].rstrip()}..."
+
+
+def _repeated_openers(dialogue_lines) -> dict[str, int]:
+    tracked_openers = {
+        "а по-человечески": "а по-человечески",
+        "а по человечески": "а по-человечески",
+        "почему это важно": "почему это важно",
+        "что это значит": "что это значит",
+        "как это влияет": "как это влияет",
+        "как это поможет": "как это поможет",
+    }
+    counts = Counter()
+    for line in dialogue_lines:
+        normalized = line.text.casefold().replace("ё", "е")
+        for phrase, label in tracked_openers.items():
+            if normalized.startswith(phrase):
+                counts[label] += 1
+    return dict(counts)
 
 
 def _has_opening(first_text: str) -> bool:

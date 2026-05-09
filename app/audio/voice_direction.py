@@ -11,7 +11,14 @@ _RUNDOWN_RE = re.compile(
     re.IGNORECASE,
 )
 _HUMAN_ASIDE_RE = re.compile(
-    r"(кхм|кашл|клаца|клавиатур|микрофон|отвернул|будь\s+здоров|здоров)",
+    r"("
+    r"кхм|кашл|клаца|клавиатур|микрофон|отвернул|будь\s+здоров|"
+    r"шорох|шурш|птиц|собак|фонит|стол|здоров"
+    r")",
+    re.IGNORECASE,
+)
+_INTERRUPTION_RE = re.compile(
+    r"(подожди|секунду|ой,\s*да\s+ладно|стоп|погоди|можно\s+я)",
     re.IGNORECASE,
 )
 _VERDICT_RE = re.compile(
@@ -41,6 +48,8 @@ def _detect_emotion(text: str) -> str | None:
         return "rundown"
     if _HUMAN_ASIDE_RE.search(text):
         return "aside"
+    if _INTERRUPTION_RE.search(text):
+        return "interruption"
     if _TRANSITION_RE.search(text):
         return "transition"
     if _VERDICT_RE.search(text):
@@ -55,6 +64,8 @@ def _pause_for_emotion(emotion: str | None, base_pause_after_ms: int) -> int:
         return max(base_pause_after_ms, 820)
     if emotion == "aside":
         return min(base_pause_after_ms, 380)
+    if emotion == "interruption":
+        return min(base_pause_after_ms, 340)
     if emotion == "verdict":
         return max(base_pause_after_ms, 700)
     return base_pause_after_ms

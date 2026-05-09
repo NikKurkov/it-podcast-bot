@@ -210,6 +210,22 @@ gleb: Звучит отлично. Осталось понять, кто это 
     assert any("is repeated" in issue.message for issue in result.issues)
 
 
+def test_validate_dialogue_script_blocks_repeated_robotic_questions() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Сегодня смотрим на практический риск.
+nika: А по-человечески, где здесь боль команды?
+gleb: Я видел похожие истории.
+artem: Практический риск здесь в интеграции.
+nika: А по-человечески, кто будет это поддерживать?
+""",
+    )
+
+    assert result.has_errors is True
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "repeated_phrase" for issue in result.issues)
+
+
 def test_validate_dialogue_script_errors_on_unexpected_translation_block() -> None:
     result = validate_dialogue_script(
         """
