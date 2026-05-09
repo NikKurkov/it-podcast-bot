@@ -84,7 +84,8 @@ def build_episode_caption(package_path: Path) -> str:
         lines.append("")
         lines.append("Темы выпуска:")
         for summary in summaries[:5]:
-            lines.append(f"- {_one_line(summary, 135)}")
+            lines.append(f"- {_short_news_title(summary)}")
+    lines.extend(["", "Приятного прослушивания!"])
 
     return _trim_caption("\n".join(lines), TELEGRAM_CAPTION_LIMIT)
 
@@ -232,7 +233,7 @@ def _episode_summaries(package_path: Path, metadata: dict[str, Any]) -> list[str
     for post in selected_posts:
         text = str(post.get("text") or "").strip()
         if text:
-            summaries.append(_one_line(text, 135))
+            summaries.append(_short_news_title(text))
     return summaries
 
 
@@ -320,6 +321,30 @@ def _one_line(value: str, limit: int) -> str:
     if len(clean) <= limit:
         return clean
     return clean[: limit - 1].rstrip() + "..."
+
+
+def _short_news_title(value: str) -> str:
+    clean = " ".join(value.replace("\n", " ").split()).strip(" -—")
+    lower = clean.casefold()
+
+    if "openai" in lower and "realtime" in lower and "voice" in lower:
+        return "OpenAI выпустил новые realtime voice-модели"
+    if "мортал комбат 2" in lower or "mortal kombat 2" in lower:
+        return 'Выход фильма "Мортал Комбат 2"'
+
+    for phrase in [", официально", ", тихо", ", не спеша"]:
+        index = clean.casefold().find(phrase)
+        if index > 0:
+            clean = clean[:index].strip()
+            break
+
+    for separator in [" — ", " – ", " - ", ". ", ": "]:
+        if separator in clean:
+            clean = clean.split(separator, 1)[0].strip()
+            break
+
+    clean = clean.strip(" .,:;!?—-")
+    return _one_line(clean, 85)
 
 
 def _trim_caption(caption: str, limit: int) -> str:

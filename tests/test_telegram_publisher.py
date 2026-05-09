@@ -37,6 +37,7 @@ def test_build_episode_caption_uses_metadata_topics(tmp_path: Path) -> None:
     assert "НикКаст #001 от 09.05.2026" in caption
     assert "Темы выпуска:" in caption
     assert "GitHub снова штормит" in caption
+    assert "Приятного прослушивания!" in caption
     assert len(caption) <= publisher.TELEGRAM_CAPTION_LIMIT
 
 
@@ -81,6 +82,58 @@ def test_build_episode_caption_falls_back_to_selected_posts(tmp_path: Path) -> N
 
     assert "Темы выпуска:" in caption
     assert "GitHub испытывает проблемы" in caption
+
+
+def test_build_episode_caption_shortens_selected_post_titles(tmp_path: Path) -> None:
+    package_path = tmp_path / "episode"
+    package_path.mkdir()
+    (package_path / "selected_posts.json").write_text(
+        json.dumps(
+            [
+                {
+                    "text": (
+                        "Discord массово сбоит по всему миру — сервис не запускается "
+                        "ни на одной платформе."
+                    ),
+                },
+                {
+                    "text": (
+                        "В Телеграм появилось казино, официально — в мессенджере теперь "
+                        "можно бросать кубики на деньги."
+                    ),
+                },
+                {
+                    "text": (
+                        "Instagram* больше не конфиденциальная соцсеть — компания Meta* "
+                        "убрала шифрование end2end."
+                    ),
+                },
+                {
+                    "text": (
+                        "Почти удачная вейкап-атака с выходом на комбо — жаль, что в блок "
+                        "Фильм «Мортал Комбат 2» во всём лучше первой части."
+                    ),
+                },
+                {
+                    "text": (
+                        "У OpenAI вышло новое поколение realtime voice-моделей 🎙️ "
+                        "GPT-Realtime-2: голосовая модель с reasoning уровня GPT-5."
+                    ),
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    caption = build_episode_caption(package_path)
+
+    assert "- Discord массово сбоит по всему миру" in caption
+    assert "- В Телеграм появилось казино" in caption
+    assert "- Instagram* больше не конфиденциальная соцсеть" in caption
+    assert '- Выход фильма "Мортал Комбат 2"' in caption
+    assert "- OpenAI выпустил новые realtime voice-модели" in caption
+    assert "сервис не запускается" not in caption
 
 
 def test_prepare_publish_audio_embeds_cover_with_ffmpeg(
