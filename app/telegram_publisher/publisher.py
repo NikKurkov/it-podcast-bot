@@ -1,4 +1,6 @@
 import json
+import shutil
+import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +12,7 @@ from app.config.settings import settings
 from app.telegram_reader.client import create_telegram_client
 
 TELEGRAM_CAPTION_LIMIT = 1024
+PUBLISH_AUDIO_DIR = "publish"
 
 
 @dataclass(frozen=True)
@@ -32,14 +35,15 @@ async def publish_episode_package(
             "Set TELEGRAM_PUBLISH_CHANNEL_ID in .env.",
         )
 
-    audio_path = package_path / "audio.mp3"
-    if not audio_path.exists():
+    source_audio_path = package_path / "audio.mp3"
+    if not source_audio_path.exists():
         raise FileNotFoundError(
-            f"Episode audio was not found: {audio_path}. "
+            f"Episode audio was not found: {source_audio_path}. "
             "Generate the episode with --with-audio before publishing.",
         )
 
     caption = build_episode_caption(package_path)
+    audio_path = prepare_publish_audio(package_path)
     client = create_telegram_client()
     async with client:
         entity = await _resolve_publish_entity(client, target_channel)
@@ -72,24 +76,62 @@ async def publish_episode_package(
 def build_episode_caption(package_path: Path) -> str:
     metadata = _read_json(package_path / "episode_metadata.json")
     fallback_metadata = _read_json(package_path / "metadata.json")
+    episode_title = build_episode_title(package_path, metadata=metadata, fallback_metadata=fallback_metadata)
+    summaries = _episode_summaries(package_path, metadata)
 
-    title = (
-        metadata.get("title")
-        or fallback_metadata.get("title")
-        or package_path.name
-    )
-    topics = metadata.get("topics") or []
-
-    lines = [str(title), "", "НикКаст: обзор главных новостей в мире IT."]
-    if topics:
+    lines = [episode_title, "", "Обзор главных новостей в мире IT."]
+    if summaries:
         lines.append("")
-        lines.append("В выпуске:")
-        for topic in topics[:5]:
-            topic_title = str(topic.get("title") or topic.get("text") or "").strip()
-            if topic_title:
-                lines.append(f"- {_one_line(topic_title, 120)}")
+        lines.append("Темы выпуска:")
+        for summary in summaries[:5]:
+            lines.append(f"- {_one_line(summary, 135)}")
 
     return _trim_caption("\n".join(lines), TELEGRAM_CAPTION_LIMIT)
+
+
+def build_episode_title(
+    package_path: Path,
+    *,
+    metadata: dict[str, Any] | None = None,
+    fallback_metadata: dict[str, Any] | None = None,
+) -> str:
+    metadata = metadata if metadata is not None else _read_json(package_path / "episode_metadata.json")
+    fallback_metadata = (
+        fallback_metadata if fallback_metadata is not None else _read_json(package_path / "metadata.json")
+    )
+    episode_number = _episode_number(package_path)
+    date_text = _episode_date_text(metadata, fallback_metadata)
+    return f"{settings.podcast_title} #{episode_number:03d} от {date_text}"
+
+
+def prepare_publish_audio(package_path: Path, cover_path: Path | None = None) -> Path:
+    source_audio_path = package_path / "audio.mp3"
+    if not source_audio_path.exists():
+        raise FileNotFoundError(f"Episode audio was not found: {source_audio_path}")
+
+    output_dir = package_path / PUBLISH_AUDIO_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+    metadata = _read_json(package_path / "episode_metadata.json")
+    fallback_metadata = _read_json(package_path / "metadata.json")
+    title = build_episode_title(
+        package_path,
+        metadata=metadata,
+        fallback_metadata=fallback_metadata,
+    )
+    output_path = output_dir / f"{_safe_filename(title)}.mp3"
+    resolved_cover_path = _resolve_cover_path(cover_path)
+
+    if resolved_cover_path and resolved_cover_path.exists():
+        _embed_cover_art(
+            source_audio_path=source_audio_path,
+            cover_path=resolved_cover_path,
+            output_path=output_path,
+            title=title,
+        )
+    else:
+        shutil.copy2(source_audio_path, output_path)
+
+    return output_path
 
 
 def write_publish_result(output_path: Path, result: TelegramPublishResult) -> Path:
@@ -145,6 +187,132 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _episode_number(package_path: Path) -> int:
+    episodes_dir = package_path.parent
+    if not episodes_dir.exists():
+        return 1
+    packages = sorted(
+        path
+        for path in episodes_dir.iterdir()
+        if path.is_dir() and (path / "audio.mp3").exists()
+    )
+    try:
+        return packages.index(package_path) + 1
+    except ValueError:
+        return len(packages) + 1
+
+
+def _episode_date_text(metadata: dict[str, Any], fallback_metadata: dict[str, Any]) -> str:
+    created_at = str(metadata.get("created_at") or fallback_metadata.get("created_at") or "")
+    if created_at:
+        try:
+            parsed = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            return parsed.strftime("%d.%m.%Y")
+        except ValueError:
+            pass
+    return datetime.now().strftime("%d.%m.%Y")
+
+
+def _episode_summaries(package_path: Path, metadata: dict[str, Any]) -> list[str]:
+    summaries = []
+    for source in metadata.get("sources") or []:
+        summary = str(source.get("summary") or "").strip()
+        if summary:
+            summaries.append(summary)
+    if summaries:
+        return summaries
+
+    topic_summaries = [str(topic).strip() for topic in metadata.get("topics") or [] if str(topic).strip()]
+    if topic_summaries:
+        return topic_summaries
+
+    selected_posts = _read_json_list(package_path / "selected_posts.json")
+    for post in selected_posts:
+        text = str(post.get("text") or "").strip()
+        if text:
+            summaries.append(_one_line(text, 135))
+    return summaries
+
+
+def _read_json_list(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _safe_filename(value: str) -> str:
+    replacements = {
+        "№": "",
+        "#": "",
+        " ": "_",
+        ".": "-",
+    }
+    result = value
+    for old, new in replacements.items():
+        result = result.replace(old, new)
+    return "".join(char for char in result if char.isalnum() or char in {"_", "-"}).strip("_-")
+
+
+def _resolve_cover_path(cover_path: Path | None) -> Path | None:
+    if cover_path:
+        return cover_path
+    if not settings.podcast_cover_image:
+        return None
+    return Path(settings.podcast_cover_image)
+
+
+def _embed_cover_art(
+    *,
+    source_audio_path: Path,
+    cover_path: Path,
+    output_path: Path,
+    title: str,
+) -> None:
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(source_audio_path),
+        "-i",
+        str(cover_path),
+        "-map",
+        "0:a",
+        "-map",
+        "1:v",
+        "-c:a",
+        "copy",
+        "-c:v",
+        "copy",
+        "-disposition:v:0",
+        "attached_pic",
+        "-id3v2_version",
+        "3",
+        "-metadata",
+        f"title={title}",
+        "-metadata",
+        f"album={settings.podcast_title}",
+        "-metadata",
+        "artist=NikCast",
+        "-metadata:s:v",
+        "title=Podcast cover",
+        "-metadata:s:v",
+        "comment=Cover (front)",
+        str(output_path),
+    ]
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError("ffmpeg is required to embed podcast cover art into MP3.") from exc
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"Could not embed podcast cover art: {exc.stderr.strip()}") from exc
 
 
 def _one_line(value: str, limit: int) -> str:

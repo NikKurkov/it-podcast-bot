@@ -120,6 +120,8 @@ make podcast-publish
 ```dotenv
 TELEGRAM_PUBLISH_CHANNEL_ID=-1001234567890
 PUBLISH_TELEGRAM_ON_FINAL=false
+PODCAST_TITLE=НикКаст
+PODCAST_COVER_IMAGE=assets/nikcast_cover.png
 ```
 
 `TELEGRAM_PUBLISH_CHANNEL_ID` можно указать числовым id канала или username вида
@@ -132,6 +134,16 @@ PUBLISH_TELEGRAM_ON_FINAL=false
 ```bash
 make podcast-generate-and-publish
 ```
+
+Перед отправкой создаётся отдельный publish-файл:
+
+```text
+data/episodes/<episode>/publish/НикКаст_003_от_08-05-2026.mp3
+```
+
+В него добавляются ID3-метаданные и обложка подкаста из `PODCAST_COVER_IMAGE`.
+В подпись Telegram-поста попадают название выпуска и обсуждаемые темы по одной
+строке. Для встраивания обложки нужен `ffmpeg`.
 
 Если нужно только
 сгенерировать сценарий по уже собранным постам:

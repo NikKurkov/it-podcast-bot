@@ -3,7 +3,11 @@ import asyncio
 from pathlib import Path
 
 from app.telegram_publisher import publisher
-from app.telegram_publisher.publisher import build_episode_caption, publish_episode_package
+from app.telegram_publisher.publisher import (
+    build_episode_caption,
+    prepare_publish_audio,
+    publish_episode_package,
+)
 
 
 def test_build_episode_caption_uses_metadata_topics(tmp_path: Path) -> None:
@@ -13,9 +17,14 @@ def test_build_episode_caption_uses_metadata_topics(tmp_path: Path) -> None:
         json.dumps(
             {
                 "title": "НикКаст от 09 мая",
+                "created_at": "2026-05-09T07:00:00+00:00",
                 "topics": [
                     {"title": "GitHub снова штормит у части разработчиков"},
                     {"title": "Новый TTS научился быстрее отвечать в realtime"},
+                ],
+                "sources": [
+                    {"summary": "GitHub снова штормит у части разработчиков"},
+                    {"summary": "Новый TTS научился быстрее отвечать в realtime"},
                 ],
             },
             ensure_ascii=False,
@@ -25,9 +34,77 @@ def test_build_episode_caption_uses_metadata_topics(tmp_path: Path) -> None:
 
     caption = build_episode_caption(package_path)
 
-    assert "НикКаст от 09 мая" in caption
+    assert "НикКаст #001 от 09.05.2026" in caption
+    assert "Темы выпуска:" in caption
     assert "GitHub снова штормит" in caption
     assert len(caption) <= publisher.TELEGRAM_CAPTION_LIMIT
+
+
+def test_prepare_publish_audio_copies_with_nice_filename_without_cover(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    package_path = tmp_path / "data" / "episodes" / "episode"
+    package_path.mkdir(parents=True)
+    (package_path / "audio.mp3").write_bytes(b"fake mp3")
+    (package_path / "episode_metadata.json").write_text(
+        json.dumps({"created_at": "2026-05-09T07:00:00+00:00"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(publisher.settings, "podcast_cover_image", None)
+
+    output_path = prepare_publish_audio(package_path)
+
+    assert output_path.name == "НикКаст_001_от_09-05-2026.mp3"
+    assert output_path.read_bytes() == b"fake mp3"
+
+
+def test_build_episode_caption_falls_back_to_selected_posts(tmp_path: Path) -> None:
+    package_path = tmp_path / "episode"
+    package_path.mkdir()
+    (package_path / "metadata.json").write_text(
+        json.dumps({"created_at": "2026-05-09T07:00:00+00:00"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (package_path / "selected_posts.json").write_text(
+        json.dumps(
+            [
+                {"text": "GitHub испытывает проблемы с доступностью в России."},
+                {"text": "Новая realtime voice-модель ускоряет голосовых агентов."},
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    caption = build_episode_caption(package_path)
+
+    assert "Темы выпуска:" in caption
+    assert "GitHub испытывает проблемы" in caption
+
+
+def test_prepare_publish_audio_embeds_cover_with_ffmpeg(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    package_path = tmp_path / "data" / "episodes" / "episode"
+    package_path.mkdir(parents=True)
+    cover_path = tmp_path / "cover.png"
+    (package_path / "audio.mp3").write_bytes(b"fake mp3")
+    cover_path.write_bytes(b"fake png")
+    calls = []
+
+    def fake_run(command, check, capture_output, text):
+        calls.append(command)
+        Path(command[-1]).write_bytes(b"mp3 with cover")
+
+    monkeypatch.setattr(publisher.subprocess, "run", fake_run)
+
+    output_path = prepare_publish_audio(package_path, cover_path=cover_path)
+
+    assert output_path.exists()
+    assert calls
+    assert str(cover_path) in calls[0]
 
 
 def test_resolve_channel_id_keeps_usernames_and_converts_numeric_ids() -> None:
@@ -46,13 +123,15 @@ def test_publish_episode_package_sends_audio_and_writes_result(tmp_path: Path, m
     )
     client = FakeTelegramClient()
     monkeypatch.setattr(publisher, "create_telegram_client", lambda: client)
+    monkeypatch.setattr(publisher.settings, "podcast_cover_image", None)
 
     result = asyncio.run(publish_episode_package(package_path, channel_id="-1001"))
 
     assert result.channel_id == "-1001"
     assert result.message_id == 42
     assert client.sent_file["entity"] == "resolved:-1001"
-    assert client.sent_file["file"].endswith("audio.mp3")
+    assert client.sent_file["file"].endswith(".mp3")
+    assert "publish" in client.sent_file["file"]
     assert (package_path / "telegram_publish.json").exists()
 
 
@@ -65,6 +144,7 @@ def test_publish_episode_package_resolves_numeric_channel_from_dialogs(
     (package_path / "audio.mp3").write_bytes(b"fake mp3")
     client = FakeTelegramClient(resolve_numeric=False)
     monkeypatch.setattr(publisher, "create_telegram_client", lambda: client)
+    monkeypatch.setattr(publisher.settings, "podcast_cover_image", None)
 
     asyncio.run(publish_episode_package(package_path, channel_id="-10012345"))
 
@@ -80,6 +160,7 @@ def test_publish_episode_package_resolves_numeric_channel_by_dialog_id(
     (package_path / "audio.mp3").write_bytes(b"fake mp3")
     client = FakeTelegramClient(resolve_numeric=False, dialog_id=-10067890, entity_id=111)
     monkeypatch.setattr(publisher, "create_telegram_client", lambda: client)
+    monkeypatch.setattr(publisher.settings, "podcast_cover_image", None)
 
     asyncio.run(publish_episode_package(package_path, channel_id="-10067890"))
 
