@@ -379,7 +379,7 @@ artem: Команде нужен план отката и проверка до�
     assert result.has_blocking_issues is False
 
 
-def test_repair_dialogue_script_text_removes_generic_filler_only_line() -> None:
+def test_repair_dialogue_script_text_keeps_short_human_goodbye() -> None:
     script_text = """
 mark: Риск не в анонсе, а в зависимости команды от внешнего сервиса.
 nika: До встречи!
@@ -390,7 +390,7 @@ artem: Команде нужен план отката и проверка до�
     repaired = repair_dialogue_script_text(script_text)
     result = validate_dialogue_script(repaired, require_all_characters=False)
 
-    assert "До встречи" not in repaired
+    assert "До встречи" in repaired
     assert result.has_blocking_issues is False
 
 

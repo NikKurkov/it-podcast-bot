@@ -37,6 +37,29 @@ artem: Проверьте зеркала и план отката.
     assert report["transition_lines"] >= 1
 
 
+def test_postprocess_dialogue_script_adds_outro_for_long_episode() -> None:
+    result = postprocess_dialogue_script(
+        """
+mark: Добрый день, сегодня 09 мая, и вы слушаете НикКаст с обзором главных новостей в мире айти. Проверяем риски недели.
+nika: В выпуске: GitHub, Claude и инфраструктура.
+gleb: Ника, выбирай первую тему.
+artem: GitHub требует резервного плана доступа.
+mark: А вот дальше история про безопасность аккаунтов.
+nika: Подожди, здесь важен контроль прав.
+gleb: Красивые кнопки не заменяют аудит.
+artem: Проверьте роли и токены доступа.
+mark: Переключаемся на инфраструктуру.
+nika: Марк, здесь снова вопрос к процессам.
+gleb: Без мониторинга всё узнают из чата.
+artem: Зафиксируйте алерты и план отката.
+""",
+    )
+    report = build_script_quality_report(result.script_text)
+
+    assert "С вами были Марк, Ника, Глеб и Артём" in result.script_text
+    assert report["outro_present"] is True
+
+
 def test_build_script_quality_report_tracks_liveness_markers() -> None:
     report = build_script_quality_report(
         """

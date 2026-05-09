@@ -19,6 +19,11 @@ _INTERRUPTION_RE = re.compile(
     r"(подожди|секунду|ой,\s*да\s+ладно|стоп|погоди|можно\s+я)",
     re.IGNORECASE,
 )
+_OUTRO_RE = re.compile(
+    r"(на\s+этом\s+вс[её]|с\s+вами\s+был|хорошего\s+(?:дня|вечера)|"
+    r"до\s+новых\s+встреч|пусть\s+.+(?:день|релиз|алерт)|\bпока\b)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -31,6 +36,7 @@ def postprocess_dialogue_script(script_text: str) -> ScriptPostprocessResult:
     before_validation = validate_dialogue_script(script_text)
     repaired_text = repair_dialogue_script_text(script_text, before_validation)
     repaired_text = _normalize_editorial_text(repaired_text)
+    repaired_text = _ensure_closing_outro(repaired_text)
     after_validation = validate_dialogue_script(repaired_text)
     report = build_script_quality_report(
         repaired_text,
@@ -89,6 +95,8 @@ def quality_gate_allows_tts(report: dict) -> tuple[bool, list[str]]:
         blocking.append("rundown_missing")
     if report.get("lines_count", 0) >= 12 and report.get("transition_lines", 0) < 2:
         blocking.append("few_transitions")
+    if report.get("lines_count", 0) >= 12 and not report.get("outro_present"):
+        blocking.append("outro_missing")
     for speaker in get_character_keys():
         if report.get("speaker_counts", {}).get(speaker, 0) < 2:
             blocking.append(f"underused_{speaker}")
@@ -116,12 +124,14 @@ def build_script_quality_report(
     direct_address_lines = sum(1 for line in dialogue_lines if _DIRECT_ADDRESS_RE.search(line.text))
     interruption_lines = sum(1 for line in dialogue_lines if _INTERRUPTION_RE.search(line.text))
     repeated_openers = _repeated_openers(dialogue_lines)
+    outro_present = _has_outro(dialogue_lines)
 
     report = {
         "lines_count": len(dialogue_lines),
         "speaker_counts": {speaker: speaker_counts.get(speaker, 0) for speaker in get_character_keys()},
         "opening_present": _has_opening(first_text),
         "rundown_present": any(line.emotion == "rundown" for line in directed_lines[:4]),
+        "outro_present": outro_present,
         "transition_lines": emotion_counts.get("transition", 0),
         "aside_lines": emotion_counts.get("aside", 0),
         "interruption_lines": interruption_lines,
@@ -139,6 +149,8 @@ def build_script_quality_report(
         report["warnings"].append("rundown_missing")
     if len(dialogue_lines) >= 12 and report["transition_lines"] < 2:
         report["warnings"].append("few_transitions")
+    if len(dialogue_lines) >= 12 and not outro_present:
+        report["warnings"].append("outro_missing")
     if len(dialogue_lines) >= 16 and direct_address_lines < 3:
         report["warnings"].append("few_direct_addresses")
     if len(dialogue_lines) >= 16 and interruption_lines < 1 and report["aside_lines"] < 1:
@@ -193,11 +205,29 @@ def _build_rundown_text(topic_summaries: list[str]) -> str:
     )
 
 
+def _ensure_closing_outro(script_text: str, min_lines: int = 10) -> str:
+    dialogue_lines = script_to_dialogue_lines(script_text)
+    if len(dialogue_lines) < min_lines or _has_outro(dialogue_lines):
+        return script_text.strip()
+
+    outro_lines = [
+        "mark: На этом всё. С вами были Марк, Ника, Глеб и Артём.",
+        "nika: Хорошего вам дня, пусть релизы проходят спокойно, а алерты молчат.",
+        "gleb: И пусть никто не чинит зависимости в три ночи. Пока.",
+        "artem: Проверьте резервные сценарии и до новых встреч.",
+    ]
+    return "\n".join([script_text.strip(), *outro_lines]).strip()
+
+
 def _short_topic(text: str, max_chars: int = 90) -> str:
     clean_text = " ".join(text.replace("\n", " ").split()).strip(" -—")
     if len(clean_text) <= max_chars:
         return clean_text
     return f"{clean_text[: max_chars - 3].rstrip()}..."
+
+
+def _has_outro(dialogue_lines) -> bool:
+    return any(_OUTRO_RE.search(line.text) for line in dialogue_lines[-5:])
 
 
 def _repeated_openers(dialogue_lines) -> dict[str, int]:
