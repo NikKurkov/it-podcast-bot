@@ -55,6 +55,7 @@ _GENERIC_FILLER_PHRASES = {
     "давайте перейдем",
     "давайте перейдём",
     "давайте обсудим дальше",
+    "переходим к следующей новости",
     "перейдем к следующей новости",
     "перейдём к следующей новости",
     "сегодня мы поговорим",
@@ -122,6 +123,7 @@ _QUALITY_RETRY_CODES = {
     "bad_opening_speaker",
     "markdown_separator",
     "missing_character",
+    "non_dialogue_text",
     "self_address",
     "speaker_streak",
     "underused_character",
@@ -131,6 +133,7 @@ _BLOCKING_QUALITY_CODES = {
     "generic_filler",
     "markdown_separator",
     "missing_character",
+    "non_dialogue_text",
     "service_leak",
     "self_address",
     "underused_character",
@@ -256,7 +259,8 @@ def repair_dialogue_script_text(
     line_numbers_to_remove = {
         issue.line_number
         for issue in validation.issues
-        if issue.code in {"markdown_separator", "meta_phrase"} and issue.line_number
+        if issue.code in {"markdown_separator", "meta_phrase", "non_dialogue_text"}
+        and issue.line_number
     }
     generic_filler_line_numbers = {
         issue.line_number
@@ -369,6 +373,8 @@ def _append_format_issues(
 
     for line_number, raw_line in enumerate(script_text.splitlines(), start=1):
         line = raw_line.strip()
+        if not line:
+            continue
         if re.fullmatch(r"-{3,}|_{3,}|\*{3,}", line):
             issues.append(
                 ScriptValidationIssue(
@@ -376,6 +382,16 @@ def _append_format_issues(
                     "Script contains markdown separator lines.",
                     line_number=line_number,
                     code="markdown_separator",
+                ),
+            )
+            continue
+        if not _SPEAKER_LINE_RE.match(line):
+            issues.append(
+                ScriptValidationIssue(
+                    "warning",
+                    "Script contains text outside `speaker: text` dialogue format.",
+                    line_number=line_number,
+                    code="non_dialogue_text",
                 ),
             )
 
@@ -516,6 +532,12 @@ def _rewrite_generic_filler_line(line: str, team_should_replacement_index: int) 
     text = re.sub(
         r"^сегодня\s+мы\s+поговорим\s+о\s+",
         "Разбираем ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"^переходим\s+к\s+следующей\s+новости\s+[—-]\s*",
+        "Следующий риск - ",
         text,
         flags=re.IGNORECASE,
     )

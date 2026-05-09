@@ -240,6 +240,36 @@ artem: Практический риск здесь в интеграции.
     assert any(issue.code == "self_address" for issue in result.issues)
 
 
+def test_validate_dialogue_script_blocks_non_dialogue_text() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Добрый день, сегодня девятое мая, и вы слушаете НикКаст.
+Добрый день, сегодня девятое мая, и вы слушаете НикКаст.
+nika: В выпуске короткие темы.
+gleb: Я видел похожие истории.
+artem: Практический риск здесь в интеграции.
+""",
+    )
+
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "non_dialogue_text" for issue in result.issues)
+
+
+def test_repair_dialogue_script_text_removes_non_dialogue_text() -> None:
+    script_text = """
+mark: Добрый день, сегодня девятое мая, и вы слушаете НикКаст.
+Добрый день, сегодня девятое мая, и вы слушаете НикКаст.
+nika: В выпуске короткие темы.
+gleb: Я видел похожие истории.
+artem: Практический риск здесь в интеграции.
+"""
+
+    repaired = repair_dialogue_script_text(script_text)
+
+    assert repaired.count("Добрый день") == 1
+    assert "nika:" in repaired
+
+
 def test_validate_dialogue_script_errors_on_unexpected_translation_block() -> None:
     result = validate_dialogue_script(
         """
@@ -458,6 +488,20 @@ mark: На этом наш выпуск подходит к концу. Спас
     assert "Сегодня мы поговорим" not in repaired
     assert "Спасибо за внимание" not in repaired
     assert result.has_blocking_issues is False
+
+
+def test_repair_dialogue_script_text_rewrites_plain_transition() -> None:
+    script_text = """
+mark: Переходим к следующей новости — Discord массово сбоит по всему миру.
+nika: Практический вопрос в запасном канале связи.
+gleb: Я видел похожие истории.
+artem: Проверьте коммуникационные fallback-сценарии.
+"""
+
+    repaired = repair_dialogue_script_text(script_text)
+
+    assert "Переходим к следующей новости" not in repaired
+    assert "Следующий риск - Discord" in repaired
 
 
 def test_repair_dialogue_script_text_removes_markdown_separator() -> None:

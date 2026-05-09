@@ -202,8 +202,9 @@ def _normalize_editorial_text(script_text: str) -> str:
     result = script_text
     for pattern, replacement in replacements:
         result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
-    lines = [re.sub(r"\s+", " ", line).strip() for line in result.splitlines()]
-    return "\n".join(line for line in lines if line).strip()
+    lines = [_normalize_dialogue_line(line) for line in result.splitlines()]
+    lines = _remove_duplicate_opening_lines([line for line in lines if line])
+    return "\n".join(lines).strip()
 
 
 def _build_rundown_text(topic_summaries: list[str]) -> str:
@@ -236,9 +237,65 @@ def _ensure_closing_outro(script_text: str, min_lines: int = 10) -> str:
 
 def _short_topic(text: str, max_chars: int = 90) -> str:
     clean_text = " ".join(text.replace("\n", " ").split()).strip(" -—")
+    clean_text = _cut_topic_title(clean_text)
     if len(clean_text) <= max_chars:
         return clean_text
     return f"{clean_text[: max_chars - 3].rstrip()}..."
+
+
+def _cut_topic_title(text: str) -> str:
+    match = re.search(r"\s+[—–-]\s+|[.:?!…]+(?:\s+|$)", text)
+    if match:
+        return text[: match.start()].strip(" .,:;!?—-")
+    return text.strip(" .,:;!?—-")
+
+
+def _normalize_dialogue_line(line: str) -> str:
+    line = re.sub(r"\s+", " ", line).strip()
+    match = re.match(r"^(?P<speaker>[\wА-Яа-яЁё-]+)\s*[:：]\s*(?P<text>.*)$", line)
+    if not match:
+        return line
+    text = match.group("text").strip()
+    if text.casefold().replace("ё", "е").startswith("в выпуске:"):
+        text = _normalize_rundown_text(text)
+    text = _capitalize_sentence_starts(text)
+    return f"{match.group('speaker')}: {text}" if text else ""
+
+
+def _normalize_rundown_text(text: str) -> str:
+    _, _, payload = text.partition(":")
+    topics = [_short_topic(part) for part in payload.split(";") if part.strip()]
+    if not topics:
+        return text
+    return "В выпуске: " + "; ".join(topics) + "."
+
+
+def _capitalize_sentence_starts(text: str) -> str:
+    result = []
+    capitalize_next = True
+    for char in text:
+        if capitalize_next and char.isalpha():
+            result.append(char.upper())
+            capitalize_next = False
+            continue
+        result.append(char)
+        if char in ".!?":
+            capitalize_next = True
+    return "".join(result)
+
+
+def _remove_duplicate_opening_lines(lines: list[str]) -> list[str]:
+    result = []
+    opening_seen = False
+    for line in lines:
+        normalized = line.casefold().replace("ё", "е")
+        has_opening = "добрый день" in normalized and "никкаст" in normalized
+        if has_opening and opening_seen:
+            continue
+        if has_opening:
+            opening_seen = True
+        result.append(line)
+    return result
 
 
 def _has_outro(dialogue_lines) -> bool:

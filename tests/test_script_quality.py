@@ -22,6 +22,33 @@ artem: Командам стоит зафиксировать план отка�
     assert result.report["lines_count"] == 4
 
 
+def test_postprocess_dialogue_script_normalizes_capitalization_and_duplicate_opening() -> None:
+    result = postprocess_dialogue_script(
+        """
+mark: Добрый день, сегодня девятое мая, и вы слушаете НикКаст с обзором главных новостей в мире айти.
+mark: Добрый день, сегодня девятое мая, и вы слушаете НикКаст с обзором главных новостей в мире айти.
+artem: это важно для команд. практическое действие: проверить доступы.
+""",
+    )
+
+    assert result.script_text.count("Добрый день") == 1
+    assert "artem: Это важно для команд. Практическое действие" in result.script_text
+
+
+def test_postprocess_dialogue_script_normalizes_ellipsized_rundown() -> None:
+    result = postprocess_dialogue_script(
+        """
+mark: Добрый день, сегодня девятое мая, и вы слушаете НикКаст с обзором главных новостей в мире айти.
+nika: В выпуске: Discord массово сбоит по всему миру — сервис не запускается. За п...; РКН добрался до GitHub? Сервис отслеживания OONI зафиксировал снижение....
+gleb: Я видел похожие истории.
+artem: Проверьте доступы и план отката.
+""",
+    )
+
+    assert "Discord массово сбоит по всему миру; РКН добрался до GitHub." in result.script_text
+    assert "..." not in result.script_text
+
+
 def test_build_script_quality_report_detects_opening_rundown_and_transition() -> None:
     report = build_script_quality_report(
         """
@@ -118,6 +145,19 @@ artem: Проверьте зеркала и план отката.
     assert "В выпуске:" in fixed
     assert report["opening_present"] is True
     assert report["rundown_present"] is True
+
+
+def test_ensure_opening_and_rundown_uses_short_topic_titles() -> None:
+    fixed = ensure_opening_and_rundown(
+        "gleb: GitHub снова проверяет терпение команд.",
+        topic_summaries=[
+            "Discord массово сбоит по всему миру — сервис не запускается ни на одной платформе.",
+            "РКН добрался до GitHub? Сервис отслеживания интернет-цензуры OONI зафиксировал снижение.",
+        ],
+    )
+
+    assert "Discord массово сбоит по всему миру; РКН добрался до GitHub." in fixed
+    assert "..." not in fixed
 
 
 def test_quality_gate_blocks_missing_opening() -> None:
