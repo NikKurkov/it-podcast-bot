@@ -51,6 +51,8 @@ def _existing_files(package: EpisodePackage) -> list[tuple[str, Path]]:
         ("audio_mp3", package.audio_mp3_path),
         ("audio_voice", package.audio_voice_wav_path),
         ("script_quality", package.path / "script_quality_report.json"),
+        ("show_notes", package.path / "show_notes.md"),
+        ("episode_metadata", package.path / "episode_metadata.json"),
         ("metadata", package.metadata_path),
     ]
     return [(label, path) for label, path in candidates if path and path.exists()]

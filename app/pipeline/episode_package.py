@@ -25,6 +25,7 @@ from app.pipeline.daily_digest import (
     export_digest_markdown,
 )
 from app.pipeline.script_draft import export_script_markdown
+from app.pipeline.publication import write_episode_metadata, write_show_notes
 from app.podcast.script_quality import postprocess_dialogue_script, write_script_quality_report
 
 
@@ -72,6 +73,8 @@ def create_episode_package(
     audio_voice_wav_path = package_path / "audio_voice.wav" if with_audio and with_music else None
     audio_report_path = package_path / "audio_report.json" if with_audio else None
     script_quality_report_path = package_path / "script_quality_report.json" if llm_profile else None
+    show_notes_path = package_path / "show_notes.md"
+    episode_metadata_path = package_path / "episode_metadata.json"
     metadata_path = package_path / "metadata.json"
 
     export_digest_markdown(digest_items, digest_markdown_path)
@@ -176,11 +179,30 @@ def create_episode_package(
             "script_quality_report": str(script_quality_report_path)
             if script_quality_report_path
             else None,
+            "show_notes": str(show_notes_path),
+            "episode_metadata": str(episode_metadata_path),
         },
     }
     metadata_path.write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2),
         encoding="utf-8",
+    )
+    write_show_notes(
+        title=package_title,
+        digest_items=digest_items,
+        output_path=show_notes_path,
+        audio_report_path=audio_report_path,
+    )
+    write_episode_metadata(
+        title=package_title,
+        created_at=metadata["created_at"],
+        digest_items=digest_items,
+        output_path=episode_metadata_path,
+        audio_path=audio_mp3_path,
+        audio_report_path=audio_report_path,
+        llm_model=llm_model,
+        tts_provider=(tts_provider or settings.tts_provider) if with_audio else None,
+        background_music=with_music if with_audio else None,
     )
 
     return EpisodePackage(
