@@ -35,8 +35,9 @@ def test_build_episode_caption_uses_metadata_topics(tmp_path: Path) -> None:
     caption = build_episode_caption(package_path)
 
     assert "НикКаст #001 от 09.05.2026" in caption
-    assert "Темы выпуска:" in caption
+    assert "<b>Темы выпуска:</b>" in caption
     assert "GitHub снова штормит" in caption
+    assert "- GitHub снова штормит у части разработчиков." in caption
     assert "Приятного прослушивания!" in caption
     assert len(caption) <= publisher.TELEGRAM_CAPTION_LIMIT
 
@@ -80,7 +81,7 @@ def test_build_episode_caption_falls_back_to_selected_posts(tmp_path: Path) -> N
 
     caption = build_episode_caption(package_path)
 
-    assert "Темы выпуска:" in caption
+    assert "<b>Темы выпуска:</b>" in caption
     assert "GitHub испытывает проблемы" in caption
 
 
@@ -128,12 +129,61 @@ def test_build_episode_caption_shortens_selected_post_titles(tmp_path: Path) -> 
 
     caption = build_episode_caption(package_path)
 
-    assert "- Discord массово сбоит по всему миру" in caption
-    assert "- В Телеграм появилось казино" in caption
-    assert "- Instagram* больше не конфиденциальная соцсеть" in caption
-    assert '- Выход фильма "Мортал Комбат 2"' in caption
-    assert "- OpenAI выпустил новые realtime voice-модели" in caption
+    assert "- Discord массово сбоит по всему миру." in caption
+    assert "- В Телеграм появилось казино." in caption
+    assert "- Instagram* больше не конфиденциальная соцсеть." in caption
+    assert "- Выход фильма &quot;Мортал Комбат 2&quot;." in caption
+    assert "- OpenAI выпустил новые realtime voice-модели." in caption
     assert "сервис не запускается" not in caption
+
+
+def test_build_episode_caption_keeps_topic_lines_laconic(tmp_path: Path) -> None:
+    package_path = tmp_path / "episode"
+    package_path.mkdir()
+    (package_path / "selected_posts.json").write_text(
+        json.dumps(
+            [
+                {
+                    "text": (
+                        "РКН добрался до GitHub? Сервис отслеживания интернет-цензуры "
+                        "OONI зафиксировал снижение доступности."
+                    ),
+                },
+                {
+                    "text": (
+                        "Программисты были в ужасе, когда прочитали этот материал… "
+                        "Вы наверняка слышали слово вайбкодинг."
+                    ),
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    caption = build_episode_caption(package_path)
+
+    assert "- РКН добрался до GitHub." in caption
+    assert "- Программисты были в ужасе, когда прочитали этот материал." in caption
+    assert "OONI" not in caption
+    assert "вайбкодинг" not in caption
+
+
+def test_build_episode_caption_includes_all_short_topics(tmp_path: Path) -> None:
+    package_path = tmp_path / "episode"
+    package_path.mkdir()
+    (package_path / "selected_posts.json").write_text(
+        json.dumps(
+            [{"text": f"Короткая тема {index} — подробности не нужны."} for index in range(1, 8)],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    caption = build_episode_caption(package_path)
+
+    assert "- Короткая тема 1." in caption
+    assert "- Короткая тема 7." in caption
 
 
 def test_prepare_publish_audio_embeds_cover_with_ffmpeg(
@@ -185,6 +235,7 @@ def test_publish_episode_package_sends_audio_and_writes_result(tmp_path: Path, m
     assert client.sent_file["entity"] == "resolved:-1001"
     assert client.sent_file["file"].endswith(".mp3")
     assert "publish" in client.sent_file["file"]
+    assert client.sent_file["parse_mode"] == "html"
     assert (package_path / "telegram_publish.json").exists()
 
 
@@ -261,11 +312,12 @@ class FakeTelegramClient:
     async def iter_dialogs(self):
         yield FakeDialog(self.entity_id, dialog_id=self.dialog_id)
 
-    async def send_file(self, entity, file, caption, supports_streaming):
+    async def send_file(self, entity, file, caption, parse_mode, supports_streaming):
         self.sent_file = {
             "entity": entity,
             "file": file,
             "caption": caption,
+            "parse_mode": parse_mode,
             "supports_streaming": supports_streaming,
         }
         return FakeMessage()

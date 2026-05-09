@@ -1,6 +1,8 @@
 import json
+import re
 import shutil
 import subprocess
+from html import escape
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -52,6 +54,7 @@ async def publish_episode_package(
                 entity,
                 file=str(audio_path),
                 caption=caption,
+                parse_mode="html",
                 supports_streaming=True,
             )
         except RPCError as exc:
@@ -79,12 +82,12 @@ def build_episode_caption(package_path: Path) -> str:
     episode_title = build_episode_title(package_path, metadata=metadata, fallback_metadata=fallback_metadata)
     summaries = _episode_summaries(package_path, metadata)
 
-    lines = [episode_title, "", "Обзор главных новостей в мире IT."]
+    lines = [escape(episode_title), "", "Обзор главных новостей в мире IT."]
     if summaries:
         lines.append("")
-        lines.append("Темы выпуска:")
-        for summary in summaries[:5]:
-            lines.append(f"- {_short_news_title(summary)}")
+        lines.append("<b>Темы выпуска:</b>")
+        for summary in summaries:
+            lines.append(f"- {escape(_ensure_sentence_period(_short_news_title(summary)))}")
     lines.extend(["", "Приятного прослушивания!"])
 
     return _trim_caption("\n".join(lines), TELEGRAM_CAPTION_LIMIT)
@@ -338,13 +341,27 @@ def _short_news_title(value: str) -> str:
             clean = clean[:index].strip()
             break
 
-    for separator in [" — ", " – ", " - ", ". ", ": "]:
-        if separator in clean:
-            clean = clean.split(separator, 1)[0].strip()
-            break
+    separator_match = re.search(r"\s+[—–-]\s+|[.:?!…]\s+", clean)
+    if separator_match:
+        clean = clean[: separator_match.start()].strip()
+    else:
+        for phrase in [" Судя ", " Подробнее ", " Все подробности "]:
+            index = clean.find(phrase)
+            if index > 0:
+                clean = clean[:index].strip()
+                break
 
     clean = clean.strip(" .,:;!?—-")
-    return _one_line(clean, 85)
+    return _one_line(clean, 68)
+
+
+def _ensure_sentence_period(value: str) -> str:
+    clean = value.strip()
+    if not clean:
+        return clean
+    if clean.endswith((".", "!", "?")):
+        return clean
+    return f"{clean}."
 
 
 def _trim_caption(caption: str, limit: int) -> str:
