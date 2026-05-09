@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from telethon.errors import RPCError
+
 from app.config.settings import settings
 from app.telegram_reader.client import create_telegram_client
 
@@ -40,12 +42,22 @@ async def publish_episode_package(
     caption = build_episode_caption(package_path)
     client = create_telegram_client()
     async with client:
-        message = await client.send_file(
-            _resolve_channel_id(target_channel),
-            file=str(audio_path),
-            caption=caption,
-            supports_streaming=True,
-        )
+        entity = await _resolve_publish_entity(client, target_channel)
+        try:
+            message = await client.send_file(
+                entity,
+                file=str(audio_path),
+                caption=caption,
+                supports_streaming=True,
+            )
+        except RPCError as exc:
+            if exc.__class__.__name__ == "ChatWriteForbiddenError":
+                raise RuntimeError(
+                    f"Telegram account cannot write to channel {target_channel!r}. "
+                    "Add this user account as a channel admin with posting rights, "
+                    "or set TELEGRAM_PUBLISH_CHANNEL_ID to another writable channel.",
+                ) from exc
+            raise
 
     result = TelegramPublishResult(
         channel_id=target_channel,
@@ -94,6 +106,39 @@ def _resolve_channel_id(value: str) -> int | str:
     if stripped.lstrip("-").isdigit():
         return int(stripped)
     return stripped
+
+
+async def _resolve_publish_entity(client, value: str):
+    entity = _resolve_channel_id(value)
+    try:
+        return await client.get_input_entity(entity)
+    except (ValueError, TypeError, RPCError) as exc:
+        if not isinstance(entity, int):
+            raise RuntimeError(
+                f"Could not resolve Telegram channel {value!r}. "
+                "Check TELEGRAM_PUBLISH_CHANNEL_ID and account permissions.",
+            ) from exc
+
+        internal_id = _telegram_channel_internal_id(entity)
+        async for dialog in client.iter_dialogs():
+            dialog_entity = getattr(dialog, "entity", None)
+            dialog_id = getattr(dialog, "id", None)
+            entity_id = getattr(dialog_entity, "id", None)
+            if dialog_id == entity or entity_id == internal_id:
+                return dialog_entity
+
+        raise RuntimeError(
+            f"Could not resolve Telegram channel id {value!r}. "
+            "Make sure the Telethon account can see this channel, or use a public/private "
+            "channel username like @my_channel in TELEGRAM_PUBLISH_CHANNEL_ID.",
+        ) from exc
+
+
+def _telegram_channel_internal_id(value: int) -> int:
+    text = str(abs(value))
+    if text.startswith("100") and len(text) > 3:
+        return int(text[3:])
+    return abs(value)
 
 
 def _read_json(path: Path) -> dict[str, Any]:

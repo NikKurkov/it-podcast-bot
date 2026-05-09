@@ -36,9 +36,13 @@ def _resolve_episode_path(value: str) -> Path:
         episodes_dir = Path("data/episodes")
         if not episodes_dir.exists():
             raise SystemExit("No episode packages found in data/episodes.")
-        candidates = [path for path in episodes_dir.iterdir() if path.is_dir()]
+        candidates = [
+            path
+            for path in episodes_dir.iterdir()
+            if path.is_dir() and (path / "audio.mp3").exists()
+        ]
         if not candidates:
-            raise SystemExit("No episode packages found in data/episodes.")
+            raise SystemExit("No episode packages with audio.mp3 found in data/episodes.")
         return max(candidates, key=lambda path: path.stat().st_mtime)
 
     path = Path(value)
