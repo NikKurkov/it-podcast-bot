@@ -2,11 +2,13 @@ import json
 import re
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from app.audio.dialogue import script_to_dialogue_lines
 from app.audio.voice_direction import apply_voice_direction
 from app.podcast.characters import get_character_keys
+from app.podcast.prompt_context import format_russian_episode_date
 from app.podcast.script_validation import (
     repair_dialogue_script_text,
     validate_dialogue_script,
@@ -44,6 +46,47 @@ def postprocess_dialogue_script(script_text: str) -> ScriptPostprocessResult:
         "changed_lines": _count_changed_lines(script_text, repaired_text),
     }
     return ScriptPostprocessResult(script_text=repaired_text, report=report)
+
+
+def ensure_opening_and_rundown(
+    script_text: str,
+    *,
+    topic_summaries: list[str] | None = None,
+    episode_date: datetime | None = None,
+) -> str:
+    report = build_script_quality_report(script_text)
+    lines = [line.strip() for line in script_text.splitlines() if line.strip()]
+    prefix = []
+    if not report["opening_present"]:
+        prefix.append(
+            "mark: "
+            f"Добрый день, сегодня {format_russian_episode_date(episode_date)}, "
+            "и вы слушаете НикКаст с обзором главных новостей в мире айти. "
+            "Разбираем, где в этих историях технический риск, а где просто шум.",
+        )
+    if not report["rundown_present"]:
+        rundown = _build_rundown_text(topic_summaries or [])
+        prefix.append(f"nika: {rundown}")
+
+    if not prefix:
+        return script_text
+    return "\n\n".join(prefix + lines).strip()
+
+
+def quality_gate_allows_tts(report: dict) -> tuple[bool, list[str]]:
+    blocking = []
+    if report.get("validation_issues"):
+        blocking.append("validation_issues")
+    if not report.get("opening_present"):
+        blocking.append("opening_missing")
+    if not report.get("rundown_present"):
+        blocking.append("rundown_missing")
+    if report.get("lines_count", 0) >= 12 and report.get("transition_lines", 0) < 2:
+        blocking.append("few_transitions")
+    for speaker in get_character_keys():
+        if report.get("speaker_counts", {}).get(speaker, 0) < 2:
+            blocking.append(f"underused_{speaker}")
+    return not blocking, blocking
 
 
 def build_script_quality_report(
@@ -119,6 +162,23 @@ def _normalize_editorial_text(script_text: str) -> str:
         result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
     lines = [re.sub(r"\s+", " ", line).strip() for line in result.splitlines()]
     return "\n".join(line for line in lines if line).strip()
+
+
+def _build_rundown_text(topic_summaries: list[str]) -> str:
+    summaries = [_short_topic(summary) for summary in topic_summaries if summary.strip()]
+    if summaries:
+        return "В выпуске: " + "; ".join(summaries[:5]) + "."
+    return (
+        "В выпуске: самые заметные IT-события дня, риски для команд, "
+        "инструменты и решения, которые стоит проверить."
+    )
+
+
+def _short_topic(text: str, max_chars: int = 90) -> str:
+    clean_text = " ".join(text.replace("\n", " ").split()).strip(" -—")
+    if len(clean_text) <= max_chars:
+        return clean_text
+    return f"{clean_text[: max_chars - 3].rstrip()}..."
 
 
 def _has_opening(first_text: str) -> bool:

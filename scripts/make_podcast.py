@@ -13,6 +13,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--script-only", action="store_true", help="Generate package and script without audio.")
     parser.add_argument("--audio-only", action="store_true", help="Render audio for the latest package.")
     parser.add_argument("--remix-only", action="store_true", help="Only remix music for the latest package.")
+    parser.add_argument("--preview", action="store_true", help="Fast preview run with fewer posts.")
     parser.add_argument("--audio", action="store_true", help="Generate audio too.")
     parser.add_argument("--with-music", action="store_true", help="Mix background music into audio.")
     parser.add_argument("--tts-provider", choices=("silero", "xtts", "espeak"), default="xtts")
@@ -47,6 +48,14 @@ def main() -> None:
     if args.fresh:
         _run([str(python), "scripts/clean_workspace.py", "--yes"])
 
+    top = args.top
+    pool_limit = args.pool_limit
+    collect_limit = args.collect_limit
+    if args.preview:
+        top = top or 2
+        pool_limit = pool_limit or 20
+        collect_limit = collect_limit or 10
+
     final_args = [
         str(python),
         "scripts/final_run.py",
@@ -60,12 +69,12 @@ def main() -> None:
         final_args.extend(["--with-audio", "--tts-provider", args.tts_provider])
     if args.with_music:
         final_args.append("--with-music")
-    if args.collect_limit is not None:
-        final_args.extend(["--collect-limit", str(args.collect_limit)])
-    if args.pool_limit is not None:
-        final_args.extend(["--pool-limit", str(args.pool_limit)])
-    if args.top is not None:
-        final_args.extend(["--top", str(args.top)])
+    if collect_limit is not None:
+        final_args.extend(["--collect-limit", str(collect_limit)])
+    if pool_limit is not None:
+        final_args.extend(["--pool-limit", str(pool_limit)])
+    if top is not None:
+        final_args.extend(["--top", str(top)])
     if args.slug:
         final_args.extend(["--slug", args.slug])
 

@@ -26,7 +26,11 @@ from app.pipeline.daily_digest import (
 )
 from app.pipeline.script_draft import export_script_markdown
 from app.pipeline.publication import write_episode_metadata, write_show_notes
-from app.podcast.script_quality import postprocess_dialogue_script, write_script_quality_report
+from app.podcast.script_quality import (
+    ensure_opening_and_rundown,
+    postprocess_dialogue_script,
+    write_script_quality_report,
+)
 
 
 @dataclass(frozen=True)
@@ -103,6 +107,10 @@ def create_episode_package(
             if validation.has_blocking_issues:
                 messages = "; ".join(issue.message for issue in validation.issues)
                 raise RuntimeError(f"Generated dialogue script failed validation: {messages}")
+            llm_text = ensure_opening_and_rundown(
+                llm_text,
+                topic_summaries=[item.text for item in digest_items],
+            )
             postprocess_result = postprocess_dialogue_script(llm_text)
             llm_text = postprocess_result.script_text
             write_script_quality_report(postprocess_result.report, script_quality_report_path)

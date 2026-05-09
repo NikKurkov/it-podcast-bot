@@ -13,6 +13,11 @@ from app.audio.inspection import write_audio_report
 from app.audio.music import mix_background_music
 from app.audio.tts import convert_wav_to_mp3, synthesize_dialogue_lines
 from app.config.settings import settings
+from app.podcast.script_quality import (
+    build_script_quality_report,
+    quality_gate_allows_tts,
+    write_script_quality_report,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -26,6 +31,11 @@ def parse_args() -> argparse.Namespace:
         "--remix-only",
         action="store_true",
         help="Reuse audio_voice.wav and only rebuild audio.wav/audio.mp3 with music.",
+    )
+    parser.add_argument(
+        "--skip-quality-gate",
+        action="store_true",
+        help="Render audio even if script quality warnings would normally block TTS.",
     )
     return parser.parse_args()
 
@@ -45,7 +55,17 @@ def main() -> None:
     else:
         if not script_path.exists():
             raise SystemExit(f"Episode has no llm_script.md: {script_path}")
-        dialogue_lines = script_to_dialogue_lines(script_path.read_text(encoding="utf-8"))
+        script_text = script_path.read_text(encoding="utf-8")
+        quality_report = build_script_quality_report(script_text)
+        write_script_quality_report(quality_report, episode_path / "script_quality_report.json")
+        allowed, blocking = quality_gate_allows_tts(quality_report)
+        if not allowed and not args.skip_quality_gate:
+            raise SystemExit(
+                "Script quality gate blocked TTS. "
+                f"Blocking issues: {', '.join(blocking)}. "
+                "Run `make podcast-script-check` or use --skip-quality-gate.",
+            )
+        dialogue_lines = script_to_dialogue_lines(script_text)
         if not dialogue_lines:
             raise SystemExit("No speakable dialogue lines found.")
         rendered_lines = asyncio.run(
