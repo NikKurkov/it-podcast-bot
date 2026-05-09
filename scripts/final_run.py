@@ -17,6 +17,7 @@ from app.pipeline.filters import contains_excluded_keyword, load_exclude_keyword
 from app.pipeline.episode_report import format_episode_report
 from app.pipeline.scoring import diversify_ranked_posts, rank_posts
 from app.pipeline.source_weights import load_source_weights
+from app.telegram_publisher.publisher import publish_episode_package
 from app.telegram_reader.collector import collect_latest_posts
 from app.utils.logger import setup_logging
 
@@ -32,6 +33,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
     parser.add_argument("--music-volume", type=float, default=settings.audio_background_music_volume)
     parser.add_argument("--music-path", default=settings.audio_background_music_path)
+    parser.add_argument(
+        "--publish",
+        action=argparse.BooleanOptionalAction,
+        default=settings.publish_telegram_on_final,
+        help="Publish generated audio.mp3 to TELEGRAM_PUBLISH_CHANNEL_ID.",
+    )
+    parser.add_argument("--publish-channel-id", default=settings.telegram_publish_channel_id)
     parser.add_argument(
         "--dialogue-script",
         action="store_true",
@@ -88,6 +96,14 @@ def main() -> None:
 
     print("Final run complete:")
     print(format_episode_report(package, collect_stats=collect_stats, selected_count=selected_count))
+    if args.publish:
+        result = asyncio.run(
+            publish_episode_package(package.path, channel_id=args.publish_channel_id),
+        )
+        print("Telegram publish complete:")
+        print(f"  channel_id: {result.channel_id}")
+        print(f"  message_id: {result.message_id}")
+        print(f"  audio: {result.audio_path}")
 
 
 def _auto_select_posts(session, pool_limit: int, top: int) -> int:

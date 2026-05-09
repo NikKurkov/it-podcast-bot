@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     telegram_channels: str | None = Field(default=None, alias="TELEGRAM_CHANNELS")
     telegram_channels_file: str = Field(default="config/channels.txt", alias="TELEGRAM_CHANNELS_FILE")
     telegram_proxy_url: str | None = Field(default=None, alias="TELEGRAM_PROXY_URL")
+    telegram_publish_channel_id: str | None = Field(default=None, alias="TELEGRAM_PUBLISH_CHANNEL_ID")
+    publish_telegram_on_final: bool = Field(default=False, alias="PUBLISH_TELEGRAM_ON_FINAL")
     exclude_keywords_file: str = Field(default="config/exclude_keywords.txt", alias="EXCLUDE_KEYWORDS_FILE")
     source_weights_file: str = Field(default="config/source_weights.txt", alias="SOURCE_WEIGHTS_FILE")
     final_collect_limit: int = Field(default=20, alias="FINAL_COLLECT_LIMIT")

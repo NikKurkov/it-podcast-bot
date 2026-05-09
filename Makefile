@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup setup-tts setup-xtts test check collect daily final final-silero final-silero-llm final-silero-llm-music final-xtts-llm-music podcast podcast-preview podcast-script podcast-script-check podcast-audio podcast-remix podcast-info stats sources list selected auto-select show rank csv digest script validate-script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music audio-xtts audio-xtts-music audio-report tts-sample tts-sample-silero tts-sample-xtts episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels clean-generated clean-generated-dry-run
+.PHONY: setup setup-tts setup-xtts test check collect daily final final-silero final-silero-llm final-silero-llm-music final-xtts-llm-music podcast podcast-publish podcast-preview podcast-script podcast-script-check podcast-audio podcast-remix podcast-info publish-latest stats sources list selected auto-select show rank csv digest script validate-script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music audio-xtts audio-xtts-music audio-report tts-sample tts-sample-silero tts-sample-xtts episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels clean-generated clean-generated-dry-run
 
 setup:
 	bash scripts/setup_env.sh
@@ -41,6 +41,9 @@ final-xtts-llm-music:
 podcast:
 	TTS_PROVIDER=xtts $(PYTHON) scripts/make_podcast.py --with-music --tts-provider xtts
 
+podcast-publish:
+	TTS_PROVIDER=xtts $(PYTHON) scripts/make_podcast.py --with-music --tts-provider xtts --publish
+
 podcast-preview:
 	TTS_PROVIDER=xtts $(PYTHON) scripts/make_podcast.py --preview --with-music --tts-provider xtts
 
@@ -58,6 +61,9 @@ podcast-remix:
 
 podcast-info:
 	$(PYTHON) scripts/episode_info.py --episode latest
+
+publish-latest:
+	$(PYTHON) scripts/publish_latest.py --episode latest
 
 stats:
 	$(PYTHON) scripts/db_stats.py

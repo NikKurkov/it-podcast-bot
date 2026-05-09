@@ -109,6 +109,29 @@ make podcast
 make podcast-preview
 ```
 
+Если нужно сразу опубликовать готовый `audio.mp3` в Telegram-канал:
+
+```bash
+make podcast-publish
+```
+
+Для публикации нужен канал в `.env`:
+
+```dotenv
+TELEGRAM_PUBLISH_CHANNEL_ID=-1001234567890
+PUBLISH_TELEGRAM_ON_FINAL=false
+```
+
+`TELEGRAM_PUBLISH_CHANNEL_ID` можно указать числовым id канала или username вида
+`@my_channel`. Аккаунт Telethon должен иметь право публиковать в этом канале.
+`PUBLISH_TELEGRAM_ON_FINAL=true` включает автопубликацию для обычного финального
+запуска, но по умолчанию она выключена, чтобы тестовые выпуски не улетали случайно.
+Уже готовый последний выпуск можно отправить отдельно:
+
+```bash
+make publish-latest
+```
+
 Если нужно только
 сгенерировать сценарий по уже собранным постам:
 

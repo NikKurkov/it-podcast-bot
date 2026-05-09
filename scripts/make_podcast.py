@@ -22,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pool-limit", type=int, default=None)
     parser.add_argument("--top", type=int, default=None)
     parser.add_argument("--slug", default=None)
+    parser.add_argument("--publish", action="store_true", help="Publish final audio to Telegram.")
     return parser.parse_args()
 
 
@@ -77,6 +78,8 @@ def main() -> None:
         final_args.extend(["--top", str(top)])
     if args.slug:
         final_args.extend(["--slug", args.slug])
+    if args.publish:
+        final_args.append("--publish")
 
     _run(final_args)
 

@@ -7,6 +7,8 @@ def test_final_run_defaults_come_from_settings(monkeypatch) -> None:
     monkeypatch.setattr(final_run.settings, "final_collect_limit", 31)
     monkeypatch.setattr(final_run.settings, "final_pool_limit", 123)
     monkeypatch.setattr(final_run.settings, "final_top_posts", 7)
+    monkeypatch.setattr(final_run.settings, "publish_telegram_on_final", True)
+    monkeypatch.setattr(final_run.settings, "telegram_publish_channel_id", "-1001")
     monkeypatch.setattr(sys, "argv", ["final_run.py"])
 
     args = final_run.parse_args()
@@ -14,6 +16,8 @@ def test_final_run_defaults_come_from_settings(monkeypatch) -> None:
     assert args.collect_limit == 31
     assert args.pool_limit == 123
     assert args.top == 7
+    assert args.publish is True
+    assert args.publish_channel_id == "-1001"
 
 
 def test_final_run_cli_overrides_settings(monkeypatch) -> None:
@@ -31,6 +35,7 @@ def test_final_run_cli_overrides_settings(monkeypatch) -> None:
             "20",
             "--top",
             "3",
+            "--no-publish",
         ],
     )
 
@@ -39,3 +44,4 @@ def test_final_run_cli_overrides_settings(monkeypatch) -> None:
     assert args.collect_limit == 10
     assert args.pool_limit == 20
     assert args.top == 3
+    assert args.publish is False
