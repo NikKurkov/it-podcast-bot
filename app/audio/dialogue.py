@@ -8,6 +8,53 @@ from app.podcast.characters import get_character_keys, resolve_character_key
 _SPEAKER_RE = re.compile(r"^(?P<speaker>[\wА-Яа-яЁё-]+)\s*[:：]\s*(?P<text>.*)$")
 _ROUND_ROBIN_SPEAKERS = get_character_keys()
 _MAX_LINE_CHARS = 450
+_RU_MONTHS_FOR_TTS = {
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
+}
+_RU_ORDINAL_DAYS_FOR_TTS = {
+    1: "первое",
+    2: "второе",
+    3: "третье",
+    4: "четвёртое",
+    5: "пятое",
+    6: "шестое",
+    7: "седьмое",
+    8: "восьмое",
+    9: "девятое",
+    10: "десятое",
+    11: "одиннадцатое",
+    12: "двенадцатое",
+    13: "тринадцатое",
+    14: "четырнадцатое",
+    15: "пятнадцатое",
+    16: "шестнадцатое",
+    17: "семнадцатое",
+    18: "восемнадцатое",
+    19: "девятнадцатое",
+    20: "двадцатое",
+    21: "двадцать первое",
+    22: "двадцать второе",
+    23: "двадцать третье",
+    24: "двадцать четвёртое",
+    25: "двадцать пятое",
+    26: "двадцать шестое",
+    27: "двадцать седьмое",
+    28: "двадцать восьмое",
+    29: "двадцать девятое",
+    30: "тридцатое",
+    31: "тридцать первое",
+}
 
 
 def script_to_dialogue_lines(script_text: str) -> list[DialogueLine]:
@@ -124,8 +171,27 @@ def _clean_speech_text(text: str) -> str:
     text = re.sub(r"https?://\S+", "", text)
     text = re.sub(r"[@#]\S+", "", text)
     text = re.sub(r"[^\w\sА-Яа-яЁё.,!?;:()«»\"'\\-]", " ", text)
+    text = _normalize_russian_dates_for_tts(text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def _normalize_russian_dates_for_tts(text: str) -> str:
+    month_pattern = "|".join(sorted(_RU_MONTHS_FOR_TTS, key=len, reverse=True))
+
+    def replace_date(match: re.Match) -> str:
+        day = int(match.group("day"))
+        month = match.group("month")
+        if day not in _RU_ORDINAL_DAYS_FOR_TTS:
+            return match.group(0)
+        return f"{_RU_ORDINAL_DAYS_FOR_TTS[day]} {month}"
+
+    return re.sub(
+        rf"\b(?P<day>0?[1-9]|[12]\d|3[01])\s+(?P<month>{month_pattern})\b",
+        replace_date,
+        text,
+        flags=re.IGNORECASE,
+    )
 
 
 def _is_service_line(line: str) -> bool:

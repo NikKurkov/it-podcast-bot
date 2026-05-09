@@ -226,6 +226,20 @@ nika: А по-человечески, кто будет это поддержи�
     assert any(issue.code == "repeated_phrase" for issue in result.issues)
 
 
+def test_validate_dialogue_script_blocks_self_address() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Сегодня смотрим на практический риск.
+nika: Ника, вот здесь тебе стоит спросить про доступы.
+gleb: Я видел похожие истории.
+artem: Практический риск здесь в интеграции.
+""",
+    )
+
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "self_address" for issue in result.issues)
+
+
 def test_validate_dialogue_script_errors_on_unexpected_translation_block() -> None:
     result = validate_dialogue_script(
         """

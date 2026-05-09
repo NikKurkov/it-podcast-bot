@@ -10,6 +10,7 @@ def assemble_podcast(
     rendered_lines: list[RenderedLine],
     output_path: Path,
     pauses_ms: list[int] | None = None,
+    final_pause_ms: int = 900,
 ) -> Path:
     if not rendered_lines:
         raise ValueError("No rendered lines to assemble.")
@@ -29,6 +30,10 @@ def assemble_podcast(
                 silence_path = tmp_path / f"silence_{index:03d}.wav"
                 _create_silence(silence_path, pause_ms)
                 concat_items.append(silence_path)
+        if final_pause_ms > 0:
+            final_silence_path = tmp_path / "silence_final.wav"
+            _create_silence(final_silence_path, final_pause_ms)
+            concat_items.append(final_silence_path)
 
         concat_file = tmp_path / "concat.txt"
         concat_file.write_text(

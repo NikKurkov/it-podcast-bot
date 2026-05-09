@@ -111,11 +111,18 @@ _SERVICE_LEAK_PATTERNS = {
     r"\btopics\s*:",
     r"\bpenalties\s*:",
 }
+_SELF_ADDRESS_NAMES = {
+    "mark": {"марк"},
+    "nika": {"ника"},
+    "gleb": {"глеб"},
+    "artem": {"артем", "артём"},
+}
 _QUALITY_RETRY_CODES = {
     "generic_filler",
     "bad_opening_speaker",
     "markdown_separator",
     "missing_character",
+    "self_address",
     "speaker_streak",
     "underused_character",
 }
@@ -125,6 +132,7 @@ _BLOCKING_QUALITY_CODES = {
     "markdown_separator",
     "missing_character",
     "service_leak",
+    "self_address",
     "underused_character",
 }
 
@@ -218,6 +226,7 @@ def validate_dialogue_script(
     _append_repeated_phrase_issues(script_text, issues)
     _append_generic_filler_phrase_issues(script_text, issues)
     _append_format_issues(script_text, dialogue_lines, issues)
+    _append_self_address_issues(dialogue_lines, issues)
     _append_service_leak_issues(script_text, issues)
     _append_unexpected_language_issues(script_text, issues)
 
@@ -460,6 +469,23 @@ def _append_service_leak_issues(
                     code="service_leak",
                 ),
             )
+
+
+def _append_self_address_issues(dialogue_lines, issues: list[ScriptValidationIssue]) -> None:
+    for line_number, line in enumerate(dialogue_lines, start=1):
+        normalized_text = line.text.casefold().replace("ё", "е")
+        own_names = _SELF_ADDRESS_NAMES.get(line.speaker, set())
+        for name in own_names:
+            if re.search(rf"\b{name}\b\s*,", normalized_text):
+                issues.append(
+                    ScriptValidationIssue(
+                        "warning",
+                        f"Speaker `{line.speaker}` addresses themselves by name.",
+                        line_number=line_number,
+                        code="self_address",
+                    ),
+                )
+                break
 
 
 def _remove_generic_filler_sentences(line: str) -> str:

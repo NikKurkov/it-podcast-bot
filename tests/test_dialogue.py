@@ -62,3 +62,16 @@ Source: https://t.me/channel/123
     assert "Source" not in lines[0].text
     assert "https://" not in lines[0].text
     assert "@" not in lines[0].text
+
+
+def test_script_to_dialogue_lines_normalizes_russian_dates_for_tts() -> None:
+    lines = script_to_dialogue_lines(
+        """
+mark: Добрый день, сегодня 09 мая, и вы слушаете НикКаст.
+nika: Проверим релизы за 1 июня и 31 декабря.
+""",
+    )
+
+    assert "девятое мая" in lines[0].text
+    assert "первое июня" in lines[1].text
+    assert "тридцать первое декабря" in lines[1].text

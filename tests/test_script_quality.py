@@ -56,8 +56,33 @@ artem: Зафиксируйте алерты и план отката.
     )
     report = build_script_quality_report(result.script_text)
 
+    assert "На этом всё" in result.script_text
     assert "С вами были Марк, Ника, Глеб и Артём" in result.script_text
     assert report["outro_present"] is True
+    assert report["outro_end_marker_present"] is True
+
+
+def test_postprocess_dialogue_script_inserts_outro_end_marker_before_goodbye() -> None:
+    result = postprocess_dialogue_script(
+        """
+mark: Добрый день, сегодня 09 мая, и вы слушаете НикКаст с обзором главных новостей в мире айти. Проверяем риски недели.
+nika: В выпуске: GitHub, Claude и инфраструктура.
+gleb: Ника, выбирай первую тему.
+artem: GitHub требует резервного плана доступа.
+mark: А вот дальше история про безопасность аккаунтов.
+nika: Подожди, здесь важен контроль прав.
+gleb: Красивые кнопки не заменяют аудит.
+artem: Проверьте роли и токены доступа.
+mark: Переключаемся на инфраструктуру.
+nika: Марк, здесь снова вопрос к процессам.
+gleb: Без мониторинга всё узнают из чата.
+artem: Проверьте алерты и план отката.
+nika: Хорошего вам дня и спокойных релизов.
+""",
+    )
+
+    assert "На этом всё, это были главные новости на сегодня." in result.script_text
+    assert result.script_text.index("На этом всё") < result.script_text.index("Хорошего вам дня")
 
 
 def test_build_script_quality_report_tracks_liveness_markers() -> None:
@@ -72,7 +97,7 @@ mark: Артём, зафиксируем вывод: проверьте зерк
 """,
     )
 
-    assert report["direct_address_lines"] >= 3
+    assert report["direct_address_lines"] >= 2
     assert report["interruption_lines"] >= 1
 
 

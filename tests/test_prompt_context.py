@@ -4,7 +4,7 @@ from app.podcast.prompt_context import build_scriptwriter_context, format_russia
 
 
 def test_format_russian_episode_date() -> None:
-    assert format_russian_episode_date(datetime(2026, 5, 9, 12, 0)) == "09 мая"
+    assert format_russian_episode_date(datetime(2026, 5, 9, 12, 0)) == "девятое мая"
 
 
 def test_build_scriptwriter_context_contains_episode_date() -> None:
