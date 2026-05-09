@@ -172,3 +172,85 @@ gleb: Я видел похожие истории.
         assert "Missing: artem" in str(exc)
     else:
         raise AssertionError("Expected RuntimeError")
+
+
+def test_edit_dialogue_script_uses_editor_prompt(monkeypatch) -> None:
+    fake_client = FakeClient()
+    monkeypatch.setattr(scriptwriter, "create_llm_client", lambda: fake_client)
+
+    result = scriptwriter.edit_dialogue_script(
+        "mark: Валидный сценарий.",
+        source_draft="Исходная новость",
+        model="local-model",
+    )
+
+    assert result == "Готовый сценарий"
+    kwargs = fake_client.chat.completions.kwargs
+    assert kwargs["model"] == "local-model"
+    assert "шоураннер" in kwargs["messages"][0]["content"]
+    assert "Исходная новость" in kwargs["messages"][1]["content"]
+    assert "mark: Валидный сценарий." in kwargs["messages"][1]["content"]
+
+
+def test_edit_validated_dialogue_script_accepts_valid_editor_output(monkeypatch) -> None:
+    original_script = """
+mark: Добрый день, сегодня девятое мая, и вы слушаете НикКаст с обзором главных новостей в мире айти. Разбираем сбой платформы и риск для команд.
+nika: В выпуске коротко: сбой Discord, доступность GitHub и обновления голосовых моделей.
+gleb: Сбой платформы звучит скучно ровно до момента, когда весь дежурный чат лежит рядом с платформой.
+artem: Команде важно заранее иметь резервный канал связи и понятный порядок эскалации.
+mark: На этом всё, это были главные новости на сегодня.
+nika: Хорошего дня всем.
+gleb: И пусть алерты сегодня молчат.
+artem: До новых встреч.
+"""
+    edited_script = """
+mark: Добрый день, сегодня девятое мая, и вы слушаете НикКаст с обзором главных новостей в мире айти. Проверяем, что ломается первым: сервисы или наши планы на релиз.
+nika: В выпуске коротко: сбой Discord, доступность GitHub и обновления голосовых моделей.
+gleb: Если дежурный чат лежит вместе с сервисом, это уже не коммуникация, а синхронное молчание.
+artem: Для команды вывод простой: держите резервный канал связи и проверьте порядок эскалации до аварии.
+mark: На этом всё, это были главные новости на сегодня.
+nika: Хорошего дня всем.
+gleb: И пусть алерты сегодня молчат.
+artem: До новых встреч.
+"""
+
+    monkeypatch.setattr(scriptwriter, "edit_dialogue_script", lambda *args, **kwargs: edited_script)
+
+    script_text, validation = scriptwriter.edit_validated_dialogue_script(
+        original_script,
+        source_draft="Черновик новостей",
+        attempts=1,
+    )
+
+    assert validation.has_blocking_issues is False
+    assert "синхронное молчание" in script_text
+
+
+def test_edit_validated_dialogue_script_falls_back_to_original_on_invalid_editor_output(
+    monkeypatch,
+) -> None:
+    original_script = """
+mark: Добрый день, сегодня девятое мая, и вы слушаете НикКаст с обзором главных новостей в мире айти. Проверяем риск доступности сервисов.
+nika: В выпуске коротко: сбой Discord и доступность GitHub.
+gleb: Если чат лежит, команда внезапно вспоминает про резервный канал.
+artem: Практический вывод: проверьте порядок эскалации и доступ к репозиториям.
+mark: На этом всё, это были главные новости на сегодня.
+nika: Хорошего дня всем.
+gleb: Без ночных аварий, пожалуйста.
+artem: До новых встреч.
+"""
+
+    monkeypatch.setattr(
+        scriptwriter,
+        "edit_dialogue_script",
+        lambda *args, **kwargs: "Невалидный текст без speaker-префиксов.",
+    )
+
+    script_text, validation = scriptwriter.edit_validated_dialogue_script(
+        original_script,
+        source_draft="Черновик новостей",
+        attempts=1,
+    )
+
+    assert validation.has_blocking_issues is False
+    assert script_text == original_script

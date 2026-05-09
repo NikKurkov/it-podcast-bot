@@ -15,6 +15,7 @@ from app.audio.music import mix_background_music
 from app.audio.tts import convert_wav_to_mp3, synthesize_dialogue_lines, synthesize_with_espeak
 from app.config.settings import settings
 from app.llm.scriptwriter import (
+    edit_validated_dialogue_script,
     model_for_profile,
     rewrite_script_draft,
     rewrite_validated_dialogue_script_draft,
@@ -87,6 +88,8 @@ def create_episode_package(
 
     llm_model = None
     script_validation_issues = []
+    script_editor_validation_issues = []
+    script_editor_applied = False
     if llm_profile:
         llm_model = model_for_profile(llm_profile)
         draft_text = script_draft_path.read_text(encoding="utf-8")
@@ -107,6 +110,23 @@ def create_episode_package(
             if validation.has_blocking_issues:
                 messages = "; ".join(issue.message for issue in validation.issues)
                 raise RuntimeError(f"Generated dialogue script failed validation: {messages}")
+            if settings.llm_script_editor_enabled:
+                edited_text, editor_validation = edit_validated_dialogue_script(
+                    llm_text,
+                    source_draft=draft_text,
+                    model=llm_model,
+                    attempts=2,
+                )
+                script_editor_applied = edited_text != llm_text
+                script_editor_validation_issues = [
+                    {
+                        "severity": issue.severity,
+                        "message": issue.message,
+                        "line_number": issue.line_number,
+                    }
+                    for issue in editor_validation.issues
+                ]
+                llm_text = edited_text
             llm_text = ensure_opening_and_rundown(
                 llm_text,
                 topic_summaries=[item.text for item in digest_items],
@@ -169,6 +189,11 @@ def create_episode_package(
         "llm_model": llm_model,
         "dialogue_script": dialogue_script,
         "script_validation_issues": script_validation_issues,
+        "script_editor_enabled": settings.llm_script_editor_enabled if dialogue_script else None,
+        "script_editor_applied": script_editor_applied if dialogue_script else None,
+        "script_editor_validation_issues": script_editor_validation_issues
+        if dialogue_script
+        else None,
         "tts_provider": (tts_provider or settings.tts_provider) if with_audio else None,
         "background_music": with_music if with_audio else None,
         "background_music_volume": (music_volume or settings.audio_background_music_volume)

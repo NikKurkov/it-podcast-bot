@@ -60,6 +60,77 @@ def rewrite_dialogue_script_draft(
     )
 
 
+def edit_dialogue_script(
+    script_text: str,
+    source_draft: str,
+    model: str | None = None,
+    temperature: float = 0.28,
+) -> str:
+    editor_input = (
+        "Исходный черновик новостей. Это единственный источник фактов:\n"
+        f"{source_draft.strip()}\n\n"
+        "Диалоговый сценарий для редакторской правки:\n"
+        f"{script_text.strip()}\n\n"
+        "Верни только улучшенный диалоговый сценарий в формате mark:/nika:/gleb:/artem:."
+    )
+    return rewrite_script_draft(
+        editor_input,
+        model=model,
+        system_prompt=_load_dialogue_editor_system_prompt(),
+        temperature=temperature,
+    )
+
+
+def edit_validated_dialogue_script(
+    script_text: str,
+    source_draft: str,
+    model: str | None = None,
+    attempts: int = 2,
+    temperature: float = 0.28,
+) -> tuple[str, ScriptValidationResult]:
+    if attempts < 1:
+        raise ValueError("attempts must be at least 1")
+
+    original_validation = validate_dialogue_script(script_text)
+    current_script_text = script_text
+    last_validation: ScriptValidationResult | None = None
+    for attempt in range(1, attempts + 1):
+        attempt_temperature = max(0.12, temperature - ((attempt - 1) * 0.06))
+        edited_script_text = edit_dialogue_script(
+            current_script_text,
+            source_draft=source_draft,
+            model=model,
+            temperature=attempt_temperature,
+        )
+        validation = validate_dialogue_script(edited_script_text)
+        if not validation.has_blocking_issues and not validation.has_quality_retry_issues:
+            return edited_script_text, validation
+
+        repaired_script_text = repair_dialogue_script_text(edited_script_text, validation)
+        if repaired_script_text != edited_script_text:
+            repaired_validation = validate_dialogue_script(repaired_script_text)
+            if (
+                not repaired_validation.has_blocking_issues
+                and not repaired_validation.has_quality_retry_issues
+            ):
+                return repaired_script_text, repaired_validation
+            validation = repaired_validation
+            edited_script_text = repaired_script_text
+
+        current_script_text = _append_editor_validation_feedback(
+            source_draft=source_draft,
+            script_text=script_text,
+            edited_script_text=edited_script_text,
+            validation=validation,
+        )
+        last_validation = validation
+
+    if not original_validation.has_blocking_issues:
+        return script_text, original_validation
+
+    return script_text, last_validation or original_validation
+
+
 def rewrite_validated_dialogue_script_draft(
     draft_text: str,
     model: str | None = None,
@@ -156,6 +227,27 @@ def _append_validation_feedback(draft_text: str, validation: ScriptValidationRes
     )
 
 
+def _append_editor_validation_feedback(
+    source_draft: str,
+    script_text: str,
+    edited_script_text: str,
+    validation: ScriptValidationResult,
+) -> str:
+    return (
+        "Исходный черновик новостей. Не добавляй факты за его пределами:\n"
+        f"{source_draft.strip()}\n\n"
+        "Изначальный валидный сценарий, который можно использовать как основу:\n"
+        f"{script_text.strip()}\n\n"
+        "Предыдущая редакторская версия была отклонена:\n"
+        f"{edited_script_text.strip()}\n\n"
+        "Ошибки редакторской версии:\n"
+        f"{format_validation_report(validation)}\n\n"
+        "Перепиши редакторскую версию так, чтобы она осталась живой, но строго прошла формат: "
+        "только строки mark:/nika:/gleb:/artem:, без текста вне реплик, без самоназываний, "
+        "без повторяющихся шаблонов и без новых фактов."
+    )
+
+
 def _load_system_prompt() -> str:
     prompt_path = Path("app/llm/prompts/scriptwriter.md")
     if prompt_path.exists() and prompt_path.read_text(encoding="utf-8").strip():
@@ -166,6 +258,14 @@ def _load_system_prompt() -> str:
 
 def _load_dialogue_system_prompt() -> str:
     prompt_path = Path("app/llm/prompts/dialogue_scriptwriter.md")
+    if prompt_path.exists() and prompt_path.read_text(encoding="utf-8").strip():
+        return _render_prompt_template(prompt_path.read_text(encoding="utf-8").strip())
+
+    return _render_prompt_template(DEFAULT_SYSTEM_PROMPT)
+
+
+def _load_dialogue_editor_system_prompt() -> str:
+    prompt_path = Path("app/llm/prompts/dialogue_editor.md")
     if prompt_path.exists() and prompt_path.read_text(encoding="utf-8").strip():
         return _render_prompt_template(prompt_path.read_text(encoding="utf-8").strip())
 
