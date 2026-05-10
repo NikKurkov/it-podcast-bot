@@ -98,6 +98,7 @@ def create_episode_package(
                 draft_text,
                 model=llm_model,
                 attempts=4,
+                allow_quality_fallback=True,
             )
             script_validation_issues = [
                 {
@@ -107,7 +108,7 @@ def create_episode_package(
                 }
                 for issue in validation.issues
             ]
-            if validation.has_blocking_issues:
+            if validation.has_structural_blocking_issues:
                 messages = "; ".join(issue.message for issue in validation.issues)
                 raise RuntimeError(f"Generated dialogue script failed validation: {messages}")
             if settings.llm_script_editor_enabled:

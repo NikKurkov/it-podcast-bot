@@ -174,6 +174,29 @@ gleb: Я видел похожие истории.
         raise AssertionError("Expected RuntimeError")
 
 
+def test_rewrite_validated_dialogue_script_draft_allows_quality_fallback(monkeypatch) -> None:
+    def fake_rewrite(*args, **kwargs):
+        return """
+mark: Добрый день, сегодня десятое мая, и вы слушаете НикКаст с обзором главных новостей в мире айти. Сегодня мы поговорим о сбоях сервисов.
+nika: Интересно, как это влияет на обычного разработчика?
+gleb: Командам стоит проверить резервный канал связи.
+artem: Командам стоит зафиксировать порядок эскалации.
+mark: На этом всё, это были главные новости на сегодня.
+"""
+
+    monkeypatch.setattr(scriptwriter, "rewrite_dialogue_script_draft", fake_rewrite)
+
+    script_text, validation = scriptwriter.rewrite_validated_dialogue_script_draft(
+        "Черновик",
+        attempts=1,
+        allow_quality_fallback=True,
+    )
+
+    assert validation.has_structural_blocking_issues is False
+    assert "Командам стоит" not in script_text
+    assert "проверка для команды" in script_text.casefold()
+
+
 def test_edit_dialogue_script_uses_editor_prompt(monkeypatch) -> None:
     fake_client = FakeClient()
     monkeypatch.setattr(scriptwriter, "create_llm_client", lambda: fake_client)

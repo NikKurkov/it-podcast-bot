@@ -168,6 +168,24 @@ class ScriptValidationResult:
         )
 
     @property
+    def has_structural_blocking_issues(self) -> bool:
+        return any(
+            issue.code
+            in {
+                "bad_opening_speaker",
+                "markdown_separator",
+                "meta_phrase",
+                "missing_character",
+                "non_dialogue_text",
+                "service_leak",
+                "stock_phrase",
+                "unexpected_language",
+                "unknown_speaker",
+            }
+            for issue in self.issues
+        )
+
+    @property
     def has_quality_retry_issues(self) -> bool:
         return any(issue.code in _QUALITY_RETRY_CODES for issue in self.issues)
 

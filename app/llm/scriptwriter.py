@@ -136,6 +136,7 @@ def rewrite_validated_dialogue_script_draft(
     model: str | None = None,
     attempts: int = 2,
     temperature: float = 0.35,
+    allow_quality_fallback: bool = False,
 ) -> tuple[str, ScriptValidationResult]:
     if attempts < 1:
         raise ValueError("attempts must be at least 1")
@@ -185,6 +186,12 @@ def rewrite_validated_dialogue_script_draft(
 
     if best_script_text and best_validation:
         return best_script_text, best_validation
+
+    if allow_quality_fallback and last_script_text:
+        fallback_script_text = repair_dialogue_script_text(last_script_text, last_validation)
+        fallback_validation = validate_dialogue_script(fallback_script_text)
+        if not fallback_validation.has_structural_blocking_issues:
+            return fallback_script_text, fallback_validation
 
     report = format_validation_report(last_validation) if last_validation else "validation did not run"
     raise RuntimeError(
