@@ -50,6 +50,23 @@ artem: Проверьте доступы и план отката.
     assert "..." not in result.script_text
 
 
+def test_postprocess_dialogue_script_varies_mechanical_phrases_and_self_addresses() -> None:
+    result = postprocess_dialogue_script(
+        """
+mark: Ника, а по-человечески, что это значит для обычных пользователей?
+nika: Ника, а по-человечески, это просто риск для сервиса.
+gleb: Глеб, а по-человечески, запасной план опять забыли.
+artem: Артем, практический вывод для разработчиков и пользователей: проверить доступы.
+""",
+    )
+
+    assert result.script_text.count("а по-человечески") <= 1
+    assert "nika: Ника," not in result.script_text
+    assert "gleb: Глеб," not in result.script_text
+    assert "artem: Артем," not in result.script_text
+    assert "практический вывод для разработчиков и пользователей" not in result.script_text
+
+
 def test_build_script_quality_report_detects_opening_rundown_and_transition() -> None:
     report = build_script_quality_report(
         """

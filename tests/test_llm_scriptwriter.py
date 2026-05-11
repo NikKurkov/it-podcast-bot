@@ -197,6 +197,103 @@ mark: На этом всё, это были главные новости на �
     assert "проверка для команды" in script_text.casefold()
 
 
+def test_rewrite_chunked_dialogue_script_draft_generates_by_news_blocks(monkeypatch) -> None:
+    calls = []
+
+    def fake_rewrite(prompt, *args, **kwargs):
+        calls.append(prompt)
+        return """
+mark: Смотрим на конкретный факт.
+nika: Здесь важно не потерять смысл новости.
+gleb: Красивый анонс не отменяет проверки.
+artem: Практический вывод — фиксируем ограничения.
+"""
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", fake_rewrite)
+
+    draft = """
+# Test
+
+### 1. @src #1
+Fact lock:
+- Main claim: Первый факт
+- Allowed fact: Первый факт делает одну вещь
+
+### 2. @src #2
+Fact lock:
+- Main claim: Второй факт
+- Allowed fact: Второй факт делает другую вещь
+
+### 3. @src #3
+Fact lock:
+- Main claim: Третий факт
+- Allowed fact: Третий факт делает третью вещь
+"""
+
+    script_text, validation = scriptwriter.rewrite_chunked_dialogue_script_draft(
+        draft,
+        model="local-model",
+        chunk_size=2,
+    )
+
+    assert len(calls) == 2
+    assert validation.has_structural_blocking_issues is False
+    assert "На этом всё" in script_text
+
+
+def test_rewrite_chunked_dialogue_script_draft_uses_deterministic_chunk_fallback(
+    monkeypatch,
+) -> None:
+    def fake_rewrite(*args, **kwargs):
+        raise RuntimeError("local model timed out")
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", fake_rewrite)
+
+    draft = """
+### 1. @src #1
+Fact lock:
+- Main claim: GitHub снизил доступность
+- Allowed fact: OONI зафиксировал снижение доступности GitHub в России
+"""
+
+    script_text, validation = scriptwriter.rewrite_chunked_dialogue_script_draft(
+        draft,
+        model="local-model",
+        chunk_size=2,
+    )
+
+    assert validation.has_structural_blocking_issues is False
+    assert "GitHub снизил доступность" in script_text
+    assert "OONI зафиксировал" in script_text
+
+
+def test_rewrite_chunked_dialogue_script_draft_falls_back_on_blocking_quality(
+    monkeypatch,
+) -> None:
+    def fake_rewrite(*args, **kwargs):
+        return """
+mark: А по-человечески, первый заход.
+nika: А по-человечески, второй заход.
+gleb: А по-человечески, третий заход.
+artem: А по-человечески, четвёртый заход.
+"""
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", fake_rewrite)
+
+    draft = """
+### 1. @src #1
+Fact lock:
+- Main claim: Discord массово сбоит
+- Allowed fact: Discord не запускается ни на одной платформе
+"""
+
+    script_text, validation = scriptwriter.rewrite_chunked_dialogue_script_draft(draft)
+
+    assert validation.has_blocking_issues is False
+    assert "а по-человечески" not in script_text.casefold()
+    assert "Discord массово сбоит" in script_text
+
+
 def test_edit_dialogue_script_uses_editor_prompt(monkeypatch) -> None:
     fake_client = FakeClient()
     monkeypatch.setattr(scriptwriter, "create_llm_client", lambda: fake_client)

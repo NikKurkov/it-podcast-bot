@@ -203,7 +203,8 @@ def _normalize_editorial_text(script_text: str) -> str:
     result = script_text
     for pattern, replacement in replacements:
         result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
-    lines = [_normalize_dialogue_line(line) for line in result.splitlines()]
+    phrase_counts: Counter[str] = Counter()
+    lines = [_normalize_dialogue_line(line, phrase_counts=phrase_counts) for line in result.splitlines()]
     lines = _remove_duplicate_opening_lines([line for line in lines if line])
     return "\n".join(lines).strip()
 
@@ -251,16 +252,23 @@ def _cut_topic_title(text: str) -> str:
     return text.strip(" .,:;!?—-")
 
 
-def _normalize_dialogue_line(line: str) -> str:
+def _normalize_dialogue_line(line: str, *, phrase_counts: Counter[str] | None = None) -> str:
     line = re.sub(r"\s+", " ", line).strip()
     match = re.match(r"^(?P<speaker>[\wА-Яа-яЁё-]+)\s*[:：]\s*(?P<text>.*)$", line)
     if not match:
         return line
+    speaker = match.group("speaker")
+    speaker_key = speaker.casefold().replace("ё", "е")
     text = match.group("text").strip()
+    text = _normalize_character_names(text)
+    text = _remove_self_address(text, speaker_key)
+    if phrase_counts is None:
+        phrase_counts = Counter()
+    text = _vary_mechanical_phrases(text, phrase_counts)
     if text.casefold().replace("ё", "е").startswith("в выпуске:"):
         text = _normalize_rundown_text(text)
     text = _capitalize_sentence_starts(text)
-    return f"{match.group('speaker')}: {text}" if text else ""
+    return f"{speaker}: {text}" if text else ""
 
 
 def _normalize_rundown_text(text: str) -> str:
@@ -269,6 +277,63 @@ def _normalize_rundown_text(text: str) -> str:
     if not topics:
         return text
     return "В выпуске: " + "; ".join(topics) + "."
+
+
+def _normalize_character_names(text: str) -> str:
+    replacements = {
+        r"\bMark\b": "Марк",
+        r"\bNika\b": "Ника",
+        r"\bGleb\b": "Глеб",
+        r"\bArtem\b": "Артём",
+    }
+    for pattern, replacement in replacements.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
+
+
+def _remove_self_address(text: str, speaker_key: str) -> str:
+    self_names = {
+        "mark": ["Марк"],
+        "nika": ["Ника"],
+        "gleb": ["Глеб"],
+        "artem": ["Артём", "Артем"],
+    }.get(speaker_key, [])
+    for name in self_names:
+        text = re.sub(rf"^\s*{name}\s*,\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(rf"(?<=[.!?])\s*{name}\s*,\s*", " ", text, flags=re.IGNORECASE)
+    return re.sub(r"\s{2,}", " ", text).strip()
+
+
+def _vary_mechanical_phrases(text: str, phrase_counts: Counter[str]) -> str:
+    variants = {
+        "а по-человечески": [
+            "если проще",
+            "на бытовом уровне",
+            "в переводе с технарского",
+            "короче",
+            "без витрины",
+            "если отбросить упаковку",
+        ],
+        "практический вывод": [
+            "вывод",
+            "прикладной смысл",
+            "рабочий вывод",
+            "что проверить",
+        ],
+        "для разработчиков и пользователей": [
+            "для команд и пользователей",
+            "для тех, кто это поддерживает",
+            "для продуктовых команд",
+        ],
+    }
+    for phrase, options in variants.items():
+        pattern = re.compile(re.escape(phrase), re.IGNORECASE)
+        while pattern.search(text):
+            replacement = options[phrase_counts[phrase] % len(options)]
+            phrase_counts[phrase] += 1
+            text = pattern.sub(replacement, text, count=1)
+    text = re.sub(r"\bчто\s+значит\s+", "", text, flags=re.IGNORECASE)
+    return re.sub(r"\s{2,}", " ", text).strip()
 
 
 def _capitalize_sentence_starts(text: str) -> str:

@@ -518,6 +518,7 @@ qwen2.5:7b-instruct
 sudo pacman -S ollama
 
 ollama pull qwen2.5:7b-instruct
+ollama pull qwen2.5:3b-instruct
 ```
 
 Настройки в `.env`:
@@ -526,7 +527,12 @@ ollama pull qwen2.5:7b-instruct
 LLM_BASE_URL=http://localhost:11434/v1
 LLM_API_KEY=ollama
 LLM_MODEL=qwen2.5:7b-instruct
+LLM_FAST_MODEL=qwen2.5:3b-instruct
+LLM_FINAL_MODEL=qwen2.5:7b-instruct
 LLM_SCRIPT_EDITOR_ENABLED=true
+LLM_CHUNKED_SCRIPT_ENABLED=true
+LLM_CHUNKED_MODEL=qwen2.5:3b-instruct
+LLM_SCRIPT_CHUNK_SIZE=3
 ```
 
 Диалоговый выпуск проходит два LLM-этапа: сначала сценарист собирает факты в
@@ -538,6 +544,12 @@ LLM_SCRIPT_EDITOR_ENABLED=true
 ```dotenv
 LLM_SCRIPT_EDITOR_ENABLED=false
 ```
+
+Для полного выпуска на CPU используется устойчивый chunked-режим: новости
+разбиваются на небольшие блоки, а сценарист пишет разговор частями через
+`LLM_CHUNKED_MODEL`. Это сильно снижает риск зависаний на длинном выпуске.
+В chunked-режиме отдельный редакторский проход пропускается, потому что он снова
+создаёт один большой запрос.
 
 Основные промты:
 

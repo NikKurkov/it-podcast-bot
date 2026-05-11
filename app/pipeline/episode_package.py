@@ -17,6 +17,7 @@ from app.config.settings import settings
 from app.llm.scriptwriter import (
     edit_validated_dialogue_script,
     model_for_profile,
+    rewrite_chunked_dialogue_script_draft,
     rewrite_script_draft,
     rewrite_validated_dialogue_script_draft,
 )
@@ -94,12 +95,21 @@ def create_episode_package(
         llm_model = model_for_profile(llm_profile)
         draft_text = script_draft_path.read_text(encoding="utf-8")
         if dialogue_script:
-            llm_text, validation = rewrite_validated_dialogue_script_draft(
-                draft_text,
-                model=llm_model,
-                attempts=4,
-                allow_quality_fallback=True,
-            )
+            script_generation_model = llm_model
+            if settings.llm_chunked_script_enabled:
+                script_generation_model = settings.llm_chunked_model or llm_model
+                llm_text, validation = rewrite_chunked_dialogue_script_draft(
+                    draft_text,
+                    model=script_generation_model,
+                    chunk_size=settings.llm_script_chunk_size,
+                )
+            else:
+                llm_text, validation = rewrite_validated_dialogue_script_draft(
+                    draft_text,
+                    model=llm_model,
+                    attempts=4,
+                    allow_quality_fallback=True,
+                )
             script_validation_issues = [
                 {
                     "severity": issue.severity,
@@ -111,11 +121,11 @@ def create_episode_package(
             if validation.has_structural_blocking_issues:
                 messages = "; ".join(issue.message for issue in validation.issues)
                 raise RuntimeError(f"Generated dialogue script failed validation: {messages}")
-            if settings.llm_script_editor_enabled:
+            if settings.llm_script_editor_enabled and not settings.llm_chunked_script_enabled:
                 edited_text, editor_validation = edit_validated_dialogue_script(
                     llm_text,
                     source_draft=draft_text,
-                    model=llm_model,
+                    model=script_generation_model,
                     attempts=2,
                 )
                 script_editor_applied = edited_text != llm_text
@@ -188,6 +198,9 @@ def create_episode_package(
         "post_ids": [post.id for post in posts],
         "llm_profile": llm_profile,
         "llm_model": llm_model,
+        "llm_script_generation_model": script_generation_model if llm_profile and dialogue_script else llm_model,
+        "llm_chunked_script_enabled": settings.llm_chunked_script_enabled if dialogue_script else None,
+        "llm_script_chunk_size": settings.llm_script_chunk_size if dialogue_script else None,
         "dialogue_script": dialogue_script,
         "script_validation_issues": script_validation_issues,
         "script_editor_enabled": settings.llm_script_editor_enabled if dialogue_script else None,

@@ -8,6 +8,7 @@ from app.podcast.characters import get_character_keys, resolve_character_key
 _SPEAKER_RE = re.compile(r"^(?P<speaker>[\wА-Яа-яЁё-]+)\s*[:：]\s*(?P<text>.*)$")
 _ROUND_ROBIN_SPEAKERS = get_character_keys()
 _MAX_LINE_CHARS = 450
+_MAX_TTS_LINE_CHARS = 170
 _RU_MONTHS_FOR_TTS = {
     "января",
     "февраля",
@@ -121,13 +122,18 @@ def _flush_dialogue_line(
         return
 
     voice_config = get_voice_config(speaker)
-    lines.append(
-        apply_voice_direction(
-            speaker=speaker,
-            text=text,
-            base_pause_after_ms=voice_config.get("pause_after_ms", 500),
-        ),
-    )
+    chunks = _split_long_text(text, max_chars=_MAX_TTS_LINE_CHARS)
+    for index, chunk in enumerate(chunks):
+        pause_after_ms = voice_config.get("pause_after_ms", 500)
+        if index < len(chunks) - 1:
+            pause_after_ms = min(pause_after_ms, 250)
+        lines.append(
+            apply_voice_direction(
+                speaker=speaker,
+                text=chunk,
+                base_pause_after_ms=pause_after_ms,
+            ),
+        )
 
 
 def _markdown_to_paragraphs(markdown: str) -> list[str]:

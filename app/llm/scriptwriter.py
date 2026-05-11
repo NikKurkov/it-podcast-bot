@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 from app.config.settings import settings
 from app.llm.client import create_llm_client
@@ -30,8 +31,12 @@ def rewrite_script_draft(
     model: str | None = None,
     system_prompt: str | None = None,
     temperature: float = 0.4,
+    max_tokens: int | None = None,
 ) -> str:
     client = create_llm_client()
+    request_kwargs = {}
+    if max_tokens is not None:
+        request_kwargs["max_tokens"] = max_tokens
     response = client.chat.completions.create(
         model=model or settings.llm_model,
         messages=[
@@ -39,6 +44,8 @@ def rewrite_script_draft(
             {"role": "user", "content": draft_text},
         ],
         temperature=temperature,
+        timeout=settings.llm_request_timeout_seconds,
+        **request_kwargs,
     )
     content = response.choices[0].message.content
     if not content:
@@ -58,6 +65,61 @@ def rewrite_dialogue_script_draft(
         system_prompt=_load_dialogue_system_prompt(),
         temperature=temperature,
     )
+
+
+def rewrite_chunked_dialogue_script_draft(
+    draft_text: str,
+    model: str | None = None,
+    chunk_size: int | None = None,
+    temperature: float = 0.25,
+) -> tuple[str, ScriptValidationResult]:
+    blocks = _split_news_blocks(draft_text)
+    if not blocks:
+        return rewrite_validated_dialogue_script_draft(
+            draft_text,
+            model=model,
+            attempts=2,
+            temperature=temperature,
+            allow_quality_fallback=True,
+        )
+
+    chunk_size = max(1, chunk_size or settings.llm_script_chunk_size)
+    chunks = [blocks[index : index + chunk_size] for index in range(0, len(blocks), chunk_size)]
+    rendered_chunks = []
+    for index, chunk_blocks in enumerate(chunks, start=1):
+        chunk_text = "\n\n".join(_compact_news_block(block) for block in chunk_blocks)
+        try:
+            rendered_chunk = rewrite_script_draft(
+                _build_chunk_user_prompt(chunk_text, index, len(chunks)),
+                model=model,
+                system_prompt=_load_dialogue_chunk_system_prompt(),
+                temperature=max(0.12, temperature - ((index - 1) * 0.02)),
+                max_tokens=650,
+            )
+        except Exception:
+            rendered_chunk = _build_deterministic_chunk_dialogue(chunk_text, index)
+
+        rendered_chunk = _clean_chunk_dialogue(rendered_chunk)
+        if not rendered_chunk:
+            rendered_chunk = _build_deterministic_chunk_dialogue(chunk_text, index)
+        rendered_chunks.append(rendered_chunk)
+
+    script_text = "\n".join(
+        [
+            *rendered_chunks,
+            "mark: На этом всё, это были главные новости на сегодня. "
+            "Главный вывод: инструменты меняются быстро, но проверка фактов, доступов и резервных сценариев остаётся за командой.",
+            "nika: Хорошего вам дня. Пусть новые штуки помогают, а не превращаются в ещё одну срочную задачу.",
+            "gleb: И пусть внешние сервисы сегодня ведут себя прилично. Хотя запасной план я бы всё равно держал рядом.",
+            "artem: С вами были Марк, Ника, Глеб и Артём. До новых встреч.",
+        ],
+    )
+    script_text = repair_dialogue_script_text(script_text)
+    validation = validate_dialogue_script(script_text)
+    if validation.has_blocking_issues:
+        script_text = _build_deterministic_dialogue_from_blocks(blocks)
+        validation = validate_dialogue_script(script_text)
+    return script_text, validation
 
 
 def edit_dialogue_script(
@@ -255,6 +317,152 @@ def _append_editor_validation_feedback(
     )
 
 
+def _split_news_blocks(draft_text: str) -> list[str]:
+    chunks = re.split(r"(?m)(?=^###\s+\d+\.\s+)", draft_text)
+    return [chunk.strip() for chunk in chunks if chunk.strip().startswith("###")]
+
+
+def _build_chunk_user_prompt(chunk_text: str, chunk_index: int, chunks_total: int) -> str:
+    return (
+        f"Блок {chunk_index} из {chunks_total}. Напиши фрагмент разговора по этим новостям.\n\n"
+        f"{chunk_text}\n\n"
+        "Верни только 4-8 строк диалога. Не делай приветствие и финальное прощание. "
+        "Не произноси ссылки и строки Fact lock дословно."
+    )
+
+
+def _clean_chunk_dialogue(script_text: str) -> str:
+    allowed = {"mark", "nika", "gleb", "artem"}
+    lines = []
+    for raw_line in script_text.splitlines():
+        line = raw_line.strip()
+        match = re.match(r"^(mark|nika|gleb|artem|Mark|Nika|Gleb|Artem)\s*[:：]\s*(.+)$", line)
+        if not match:
+            continue
+        speaker = match.group(1).casefold()
+        if speaker not in allowed:
+            continue
+        text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", match.group(2)).strip()
+        text = re.sub(r"https?://\S+|\b\w+\.(?:me|ru|com|io|dev)/\S+", "", text).strip()
+        if text:
+            lines.append(f"{speaker}: {text}")
+    repaired = repair_dialogue_script_text("\n".join(lines))
+    return repaired.strip()
+
+
+def _build_deterministic_chunk_dialogue(chunk_text: str, chunk_index: int) -> str:
+    topics = _extract_fact_topics(chunk_text)
+    if not topics:
+        return ""
+
+    lines = []
+    speakers = ["mark", "nika", "gleb", "artem"]
+    transitions = [
+        "Следующая тема",
+        "Дальше у нас история",
+        "Переключаемся",
+        "Теперь к другому сигналу",
+    ]
+    conclusions = [
+        "Вывод простой: проверяем факты до того, как это станет срочной задачей.",
+        "Для команды это повод проверить доступы, данные и резервный план.",
+        "Здесь лучше не спорить с хайпом, а посмотреть на поддержку и эксплуатацию.",
+        "Практически это означает: фиксируем риск и заранее готовим обходной путь.",
+    ]
+    for index, topic in enumerate(topics):
+        lead = speakers[(chunk_index + index - 1) % len(speakers)]
+        responder = speakers[(chunk_index + index) % len(speakers)]
+        expert = speakers[(chunk_index + index + 1) % len(speakers)]
+        transition = transitions[(chunk_index + index - 1) % len(transitions)]
+        conclusion = conclusions[(chunk_index + index - 1) % len(conclusions)]
+        lines.append(f"{lead}: {transition}: {topic['claim']}.")
+        lines.append(f"{responder}: По исходной новости: {topic['fact']}.")
+        lines.append(f"{expert}: {conclusion}")
+    return "\n".join(lines)
+
+
+def _build_deterministic_dialogue_from_blocks(blocks: list[str]) -> str:
+    topics = []
+    for block in blocks:
+        topics.extend(_extract_fact_topics(block))
+    if not topics:
+        return ""
+
+    speakers = ["mark", "nika", "gleb", "artem"]
+    transitions = [
+        "Первая тема",
+        "А вот следующая новость",
+        "Дальше у нас история",
+        "Переключаемся на другой риск",
+        "Теперь коротко про ещё один сигнал",
+    ]
+    conclusions = [
+        "Вывод простой: проверяем факты до того, как это станет срочной задачей.",
+        "Для команды это повод проверить доступы, данные и резервный план.",
+        "Здесь лучше не спорить с хайпом, а посмотреть на поддержку и эксплуатацию.",
+        "Практически это означает: фиксируем риск и заранее готовим обходной путь.",
+        "Главное не делать вид, что внешний сервис или новый инструмент всегда будет вести себя предсказуемо.",
+    ]
+    body = []
+    for index, topic in enumerate(topics):
+        lead = speakers[index % len(speakers)]
+        responder = speakers[(index + 1) % len(speakers)]
+        expert = speakers[(index + 2) % len(speakers)]
+        transition = transitions[index % len(transitions)]
+        conclusion = conclusions[index % len(conclusions)]
+        body.extend(
+            [
+                f"{lead}: {transition}: {topic['claim']}.",
+                f"{responder}: По исходной новости: {topic['fact']}.",
+                f"{expert}: {conclusion}",
+            ],
+        )
+    return "\n".join(
+        [
+            *body,
+            "mark: На этом всё, это были главные новости на сегодня.",
+            "nika: Хорошего вам дня.",
+            "gleb: Проверяйте резервные сценарии.",
+            "artem: До новых встреч.",
+        ],
+    )
+
+
+def _compact_news_block(block: str) -> str:
+    title_match = re.search(r"(?m)^###\s+(.+)$", block)
+    title = title_match.group(1).strip() if title_match else "news"
+    facts = []
+    for line in block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- Main claim:") or stripped.startswith("- Allowed fact:"):
+            facts.append(stripped)
+    if not facts:
+        facts = [_shorten_for_dialogue(block, max_chars=400)]
+    return "\n".join([f"### {title}", *facts[:5]])
+
+
+def _extract_fact_topics(chunk_text: str) -> list[dict[str, str]]:
+    claims = re.findall(r"(?m)^-\s+Main claim:\s+(.+)$", chunk_text)
+    facts = re.findall(r"(?m)^-\s+Allowed fact:\s+(.+)$", chunk_text)
+    topics = []
+    for index, claim in enumerate(claims):
+        fact = facts[index] if index < len(facts) else claim
+        topics.append(
+            {
+                "claim": _shorten_for_dialogue(claim),
+                "fact": _shorten_for_dialogue(fact),
+            },
+        )
+    return topics
+
+
+def _shorten_for_dialogue(text: str, max_chars: int = 180) -> str:
+    text = " ".join(text.split()).strip(" .,:;!?—-")
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
+
+
 def _load_system_prompt() -> str:
     prompt_path = Path("app/llm/prompts/scriptwriter.md")
     if prompt_path.exists() and prompt_path.read_text(encoding="utf-8").strip():
@@ -273,6 +481,14 @@ def _load_dialogue_system_prompt() -> str:
 
 def _load_dialogue_editor_system_prompt() -> str:
     prompt_path = Path("app/llm/prompts/dialogue_editor.md")
+    if prompt_path.exists() and prompt_path.read_text(encoding="utf-8").strip():
+        return _render_prompt_template(prompt_path.read_text(encoding="utf-8").strip())
+
+    return _render_prompt_template(DEFAULT_SYSTEM_PROMPT)
+
+
+def _load_dialogue_chunk_system_prompt() -> str:
+    prompt_path = Path("app/llm/prompts/dialogue_chunk_scriptwriter.md")
     if prompt_path.exists() and prompt_path.read_text(encoding="utf-8").strip():
         return _render_prompt_template(prompt_path.read_text(encoding="utf-8").strip())
 

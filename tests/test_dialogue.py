@@ -43,6 +43,15 @@ def test_script_to_dialogue_lines_parses_russian_speaker_names() -> None:
     assert [line.speaker for line in lines] == ["mark", "nika", "artem"]
 
 
+def test_script_to_dialogue_lines_splits_long_explicit_lines_for_tts() -> None:
+    long_text = " ".join(["очень длинная реплика"] * 20)
+    lines = script_to_dialogue_lines(f"mark: {long_text}")
+
+    assert len(lines) > 1
+    assert {line.speaker for line in lines} == {"mark"}
+    assert all(len(line.text) <= 170 for line in lines)
+
+
 def test_script_to_dialogue_lines_skips_service_lines_and_cleans_symbols() -> None:
     lines = script_to_dialogue_lines(
         """
