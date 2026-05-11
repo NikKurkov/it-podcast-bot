@@ -323,7 +323,8 @@ def _one_line(value: str, limit: int) -> str:
     clean = " ".join(value.split())
     if len(clean) <= limit:
         return clean
-    return clean[: limit - 1].rstrip() + "..."
+    truncated = clean[:limit].rsplit(" ", 1)[0].strip(" .,:;!?—-")
+    return truncated or clean[:limit].strip(" .,:;!?—-")
 
 
 def _short_news_title(value: str) -> str:

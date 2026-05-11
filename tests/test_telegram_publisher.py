@@ -187,6 +187,31 @@ def test_build_episode_caption_includes_all_short_topics(tmp_path: Path) -> None
     assert "- Короткая тема 7." in caption
 
 
+def test_build_episode_caption_does_not_cut_topic_mid_word(tmp_path: Path) -> None:
+    package_path = tmp_path / "episode"
+    package_path.mkdir()
+    (package_path / "selected_posts.json").write_text(
+        json.dumps(
+            [
+                {
+                    "text": (
+                        "Угнать за 60 секунд Forza Horizon 6 появилась на торрент-трекерах "
+                        "за неделю до официального релиза."
+                    ),
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    caption = build_episode_caption(package_path)
+
+    assert "- Угнать за 60 секунд Forza Horizon 6 появилась на торрент-трекерах." in caption
+    assert "..." not in caption
+    assert " з." not in caption
+
+
 def test_prepare_publish_audio_embeds_cover_with_ffmpeg(
     tmp_path: Path,
     monkeypatch,
