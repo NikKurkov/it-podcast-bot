@@ -38,6 +38,9 @@ def test_export_script_markdown(tmp_path) -> None:
     assert "## top news" in content
     assert "Editor note: Open with this" not in content
     assert "черновик" not in content
+    assert "Fact lock:" in content
+    assert "- Main claim: Selected story" in content
+    assert "Do not replace the mechanism" in content
     assert "Selected story" in content
 
 
