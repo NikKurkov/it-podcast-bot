@@ -17,7 +17,7 @@ from app.pipeline.episode_package import create_episode_package
 from app.pipeline.episode_history import get_recent_episode_post_ids
 from app.pipeline.filters import contains_excluded_keyword, load_exclude_keywords
 from app.pipeline.episode_report import format_episode_report
-from app.pipeline.scoring import diversify_ranked_posts, rank_posts
+from app.pipeline.scoring import diversify_ranked_posts, is_podcast_candidate, rank_posts
 from app.pipeline.source_weights import load_source_weights
 from app.telegram_publisher.publisher import publish_episode_package
 from app.telegram_reader.collector import collect_latest_posts
@@ -124,6 +124,7 @@ def _auto_select_posts(session, pool_limit: int, top: int) -> int:
         ranked_post
         for ranked_post in ranked_posts
         if not contains_excluded_keyword(ranked_post.post.text, keywords)
+        and is_podcast_candidate(ranked_post)
     ]
     selected_ranked_posts = diversify_ranked_posts(ranked_posts, limit=top)
     selected_posts = [ranked_post.post for ranked_post in selected_ranked_posts]
