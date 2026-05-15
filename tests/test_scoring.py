@@ -197,14 +197,20 @@ def test_diversify_ranked_posts_limits_one_source_dominance() -> None:
         noisy_source = get_or_create_source(session, "noisy")
         other_source = get_or_create_source(session, "other")
         posts = []
-        for index in range(4):
+        noisy_texts = [
+            "Python API production infrastructure release with database migration",
+            "Kubernetes observability rollout adds tracing for backend services",
+            "Linux server update changes container networking defaults",
+            "Frontend React build pipeline gets security dependency audit",
+        ]
+        for index, text in enumerate(noisy_texts):
             post = save_post(
                 session,
                 noisy_source,
                 {
                     "telegram_message_id": index + 1,
                     "message_date": now,
-                    "text": f"Python API production infrastructure release {index}",
+                    "text": text,
                     "views": 10000 - index,
                     "forwards": 100,
                 },
@@ -231,6 +237,60 @@ def test_diversify_ranked_posts_limits_one_source_dominance() -> None:
         assert len(selected) == 3
         assert sum(1 for item in selected if item.post.source_channel.username == "noisy") == 2
         assert any(item.post.source_channel.username == "other" for item in selected)
+
+
+def test_diversify_ranked_posts_skips_cross_channel_same_story() -> None:
+    session_factory = _make_session_factory()
+    now = datetime(2026, 5, 6, 12, tzinfo=timezone.utc)
+
+    with session_factory() as session:
+        source_a = get_or_create_source(session, "source_a")
+        source_b = get_or_create_source(session, "source_b")
+        source_c = get_or_create_source(session, "source_c")
+        github_post = save_post(
+            session,
+            source_a,
+            {
+                "telegram_message_id": 1,
+                "message_date": now,
+                "text": "РКН добрался до GitHub: OONI зафиксировал снижение доступности платформы в России.",
+                "views": 10000,
+                "forwards": 100,
+            },
+        )
+        github_duplicate = save_post(
+            session,
+            source_b,
+            {
+                "telegram_message_id": 2,
+                "message_date": now,
+                "text": "GitHub стал хуже открываться в РФ, сервис OONI пишет о снижении доступности.",
+                "views": 9000,
+                "forwards": 90,
+            },
+        )
+        discord_post = save_post(
+            session,
+            source_c,
+            {
+                "telegram_message_id": 3,
+                "message_date": now,
+                "text": "Discord массово сбоит по всему миру, API не отвечает у пользователей.",
+                "views": 8000,
+                "forwards": 80,
+            },
+        )
+
+        assert github_post is not None
+        assert github_duplicate is not None
+        assert discord_post is not None
+        ranked_posts = rank_posts([github_post, github_duplicate, discord_post], now=now)
+        selected = diversify_ranked_posts(ranked_posts, limit=3)
+
+        selected_texts = [item.post.text for item in selected]
+        assert len(selected) == 2
+        assert any("GitHub" in text for text in selected_texts)
+        assert any("Discord" in text for text in selected_texts)
 
 
 def _make_session_factory() -> sessionmaker:
