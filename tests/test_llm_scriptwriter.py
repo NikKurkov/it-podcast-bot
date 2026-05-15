@@ -294,6 +294,42 @@ Fact lock:
     assert "Discord массово сбоит" in script_text
 
 
+def test_deterministic_dialogue_fallback_has_scene_variety() -> None:
+    blocks = [
+        """
+### 1. @src #1
+Fact lock:
+- Main claim: GitHub снизил доступность
+- Allowed fact: OONI зафиксировал снижение доступности GitHub в России
+""",
+        """
+### 2. @src #2
+Fact lock:
+- Main claim: Discord массово сбоит
+- Allowed fact: Discord не запускается ни на одной платформе
+""",
+        """
+### 3. @src #3
+Fact lock:
+- Main claim: У ИИ-агентов появилась библиотека памяти
+- Allowed fact: Memoir превращает память Claude Code в библиотеку знаний
+""",
+    ]
+
+    script_text = scriptwriter._build_deterministic_dialogue_from_blocks(blocks)
+
+    assert "По исходной новости" not in script_text
+    assert "Первая зацепка" in script_text
+    assert "А вот следующая тема" in script_text
+    assert "Дальше история с подвохом" in script_text
+    assert "микрофон" in script_text or "клавиатура" in script_text
+    assert "Финальный вывод" in script_text
+    assert script_text.count("mark:") >= 2
+    assert script_text.count("nika:") >= 2
+    assert script_text.count("gleb:") >= 2
+    assert script_text.count("artem:") >= 2
+
+
 def test_edit_dialogue_script_uses_editor_prompt(monkeypatch) -> None:
     fake_client = FakeClient()
     monkeypatch.setattr(scriptwriter, "create_llm_client", lambda: fake_client)

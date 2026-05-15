@@ -223,6 +223,8 @@ def diversify_ranked_posts(
             break
         if ranked_post.post.id in selected_ids:
             continue
+        if _is_too_similar_to_selected(ranked_post, selected, similarity_threshold):
+            continue
         selected.append(ranked_post)
         selected_ids.add(ranked_post.post.id)
 
@@ -421,37 +423,128 @@ def _is_too_similar_to_selected(
     tokens = _content_tokens(ranked_post.post.text)
     if not tokens:
         return False
+    signature = _topic_signature(ranked_post.post.text)
 
     for selected_post in selected:
         selected_tokens = _content_tokens(selected_post.post.text)
         if not selected_tokens:
             continue
+        if signature and signature == _topic_signature(selected_post.post.text):
+            return True
+        if _has_same_named_event(tokens, selected_tokens):
+            return True
         similarity = len(tokens & selected_tokens) / len(tokens | selected_tokens)
         if similarity >= similarity_threshold:
             return True
     return False
 
 
+def _topic_signature(text: str) -> tuple[str, ...]:
+    tokens = _content_tokens(_topic_lead(text))
+    meaningful = [
+        token
+        for token in sorted(tokens)
+        if not token.isdigit() and token not in TOPIC_SIGNATURE_STOP_WORDS
+    ]
+    return tuple(meaningful[:6])
+
+
+def _topic_lead(text: str) -> str:
+    normalized = " ".join(text.replace("\n", " ").split())
+    match = re.search(r"\s+[—–-]\s+|[.:?!…]+(?:\s+|$)", normalized)
+    if match:
+        return normalized[: match.start()]
+    return normalized[:160]
+
+
+def _has_same_named_event(tokens: set[str], selected_tokens: set[str]) -> bool:
+    shared = tokens & selected_tokens
+    if len(shared & NAMED_EVENT_TOKENS) >= 1 and len(shared) >= 2:
+        return True
+    if len(shared & COMPANY_OR_PRODUCT_TOKENS) >= 1 and len(shared & EVENT_ACTION_TOKENS) >= 1:
+        return True
+    return False
+
+
 def _content_tokens(text: str) -> set[str]:
     normalized = text.casefold().replace("ё", "е")
     tokens = set(re.findall(r"[a-zа-я0-9]{4,}", normalized))
-    stop_words = {
-        "https",
-        "http",
-        "www",
-        "того",
-        "если",
-        "есть",
-        "будет",
-        "были",
-        "также",
-        "можно",
-        "свои",
-        "себя",
-        "этот",
-        "этой",
-        "этом",
-        "когда",
-        "которые",
-    }
-    return tokens - stop_words
+    return tokens - CONTENT_STOP_WORDS
+
+
+CONTENT_STOP_WORDS = {
+    "https",
+    "http",
+    "www",
+    "того",
+    "если",
+    "есть",
+    "будет",
+    "были",
+    "также",
+    "можно",
+    "свои",
+    "себя",
+    "этот",
+    "этой",
+    "этом",
+    "когда",
+    "которые",
+}
+
+TOPIC_SIGNATURE_STOP_WORDS = CONTENT_STOP_WORDS | {
+    "новост",
+    "новость",
+    "вышла",
+    "вышел",
+    "появил",
+    "получил",
+    "получит",
+    "представ",
+    "релиз",
+    "сервис",
+}
+
+COMPANY_OR_PRODUCT_TOKENS = {
+    "android",
+    "apple",
+    "chatgpt",
+    "claude",
+    "codex",
+    "discord",
+    "forza",
+    "gemini",
+    "github",
+    "google",
+    "instagram",
+    "maigret",
+    "memoir",
+    "openai",
+    "steam",
+    "telegram",
+    "windows",
+    "андроид",
+    "дискорд",
+    "телеграм",
+}
+
+EVENT_ACTION_TOKENS = {
+    "атака",
+    "взлом",
+    "доступност",
+    "зависимость",
+    "камер",
+    "модел",
+    "обновлен",
+    "памят",
+    "релиз",
+    "сбой",
+    "сбоит",
+    "уязвимост",
+}
+
+NAMED_EVENT_TOKENS = COMPANY_OR_PRODUCT_TOKENS | {
+    "rkn",
+    "ooni",
+    "ркн",
+}
