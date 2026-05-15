@@ -223,6 +223,19 @@ Ollama, TCP-доступность локального proxy и LLM, XTTS-ре�
 обложку и свободное место на диске. `make doctor-telegram` дополнительно
 подключается к Telegram и проверяет сохранённую пользовательскую сессию.
 
+Поставить ежедневный user systemd-таймер на полный выпуск с публикацией в 07:00:
+
+```bash
+make podcast-scheduler-preview
+make podcast-scheduler-install
+```
+
+Preview выводит unit-файлы без записи. Установщик создаёт
+`~/.config/systemd/user/it-podcast-bot.service` и
+`~/.config/systemd/user/it-podcast-bot.timer`, ждёт локальный SOCKS-прокси и
+Ollama, запускает `scripts/make_podcast.py --with-music --tts-provider xtts --publish`
+и пишет лог в `data/logs/scheduled_podcast.log`.
+
 Длина выпуска и количество новостей настраиваются через `.env`:
 
 ```dotenv
