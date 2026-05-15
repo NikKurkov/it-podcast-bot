@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from app.pipeline.daily_digest import DigestItem
@@ -154,9 +155,31 @@ def _description(digest_items: list[DigestItem]) -> str:
 def _short_topic(text: str, max_chars: int = 110) -> str:
     clean_text = " ".join(text.replace("\n", " ").split())
     clean_text = clean_text.strip(" -—")
+    clean_text = _cut_topic_title(clean_text)
     if len(clean_text) <= max_chars:
         return clean_text
-    return f"{clean_text[: max_chars - 3].rstrip()}..."
+    return _drop_truncated_topic_tail(clean_text[:max_chars].rsplit(" ", 1)[0].strip())
+
+
+def _cut_topic_title(text: str) -> str:
+    text = re.split(r"\s+(?:Старт продаж|Продажи)\b", text, maxsplit=1, flags=re.IGNORECASE)[0]
+    match = re.search(r"\s+[—–-]\s+|[.:?!…]+(?:\s+|$)", text)
+    if match:
+        text = text[: match.start()]
+    return _drop_truncated_topic_tail(text.strip(" .,:;!?—-"))
+
+
+def _drop_truncated_topic_tail(text: str) -> str:
+    fragments = {
+        "заплан",
+        "экс",
+        "официальных",
+        "производител",
+    }
+    words = text.split()
+    while words and words[-1].casefold().replace("ё", "е").strip(".,:;!?—-") in fragments:
+        words.pop()
+    return " ".join(words).strip(" .,:;!?—-")
 
 
 def _format_duration(duration_seconds: float | int) -> str:

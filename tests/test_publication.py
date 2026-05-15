@@ -65,3 +65,32 @@ def test_write_episode_metadata_contains_publication_fields(tmp_path) -> None:
     assert "local-model" in content
     assert "xtts" in content
     assert "security" in content
+
+
+def test_write_episode_metadata_uses_clean_short_summaries(tmp_path) -> None:
+    item = DigestItem(
+        post_id=1,
+        source="example",
+        title="Example",
+        message_date=datetime(2026, 5, 9, 12, 0),
+        text=(
+            "Crocs и Red Bull выпустят коллекцию сабо в виде болидов Формулы-1 "
+            "Старт продаж запланирован на 21 мая."
+        ),
+        url="https://t.me/example/1",
+        views=100,
+        forwards=5,
+        score=None,
+    )
+    output_path = tmp_path / "episode_metadata.json"
+
+    write_episode_metadata(
+        title="Test episode",
+        created_at="2026-05-09T12:00:00+00:00",
+        digest_items=[item],
+        output_path=output_path,
+    )
+    content = output_path.read_text(encoding="utf-8")
+
+    assert "заплан" not in content
+    assert "..." not in content

@@ -242,16 +242,31 @@ def _ensure_closing_outro(script_text: str, min_lines: int = 10) -> str:
 def _short_topic(text: str, max_chars: int = 90) -> str:
     clean_text = " ".join(text.replace("\n", " ").split()).strip(" -—")
     clean_text = _cut_topic_title(clean_text)
+    clean_text = _drop_truncated_topic_tail(clean_text)
     if len(clean_text) <= max_chars:
         return clean_text
-    return f"{clean_text[: max_chars - 3].rstrip()}..."
+    return _drop_truncated_topic_tail(clean_text[:max_chars].rsplit(" ", 1)[0].strip())
 
 
 def _cut_topic_title(text: str) -> str:
+    text = re.split(r"\s+(?:Старт продаж|Продажи)\b", text, maxsplit=1, flags=re.IGNORECASE)[0]
     match = re.search(r"\s+[—–-]\s+|[.:?!…]+(?:\s+|$)", text)
     if match:
         return text[: match.start()].strip(" .,:;!?—-")
     return text.strip(" .,:;!?—-")
+
+
+def _drop_truncated_topic_tail(text: str) -> str:
+    fragments = {
+        "заплан",
+        "экс",
+        "официальных",
+        "производител",
+    }
+    words = text.split()
+    while words and words[-1].casefold().replace("ё", "е").strip(".,:;!?—-") in fragments:
+        words.pop()
+    return " ".join(words).strip(" .,:;!?—-")
 
 
 def _normalize_dialogue_line(line: str, *, phrase_counts: Counter[str] | None = None) -> str:

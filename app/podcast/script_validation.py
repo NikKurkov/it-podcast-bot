@@ -118,6 +118,11 @@ _SELF_ADDRESS_NAMES = {
     "gleb": {"глеб"},
     "artem": {"артем", "артём"},
 }
+_TRUNCATED_END_RE = re.compile(
+    r"(\b(?:в|во|на|у|с|со|из|от|для|через|про|о|об|по|при|без|экс)\.?$|"
+    r"(?:^|:\s*)\b(?:получите|устройства)\.?$)",
+    re.IGNORECASE,
+)
 _QUALITY_RETRY_CODES = {
     "generic_filler",
     "bad_opening_speaker",
@@ -126,6 +131,7 @@ _QUALITY_RETRY_CODES = {
     "non_dialogue_text",
     "self_address",
     "speaker_streak",
+    "truncated_fragment",
     "underused_character",
 }
 _BLOCKING_QUALITY_CODES = {
@@ -136,6 +142,7 @@ _BLOCKING_QUALITY_CODES = {
     "non_dialogue_text",
     "service_leak",
     "self_address",
+    "truncated_fragment",
     "underused_character",
 }
 
@@ -248,6 +255,7 @@ def validate_dialogue_script(
     _append_generic_filler_phrase_issues(script_text, issues)
     _append_format_issues(script_text, dialogue_lines, issues)
     _append_self_address_issues(dialogue_lines, issues)
+    _append_truncated_fragment_issues(script_text, issues)
     _append_service_leak_issues(script_text, issues)
     _append_unexpected_language_issues(script_text, issues)
 
@@ -280,6 +288,11 @@ def repair_dialogue_script_text(
         if issue.code in {"markdown_separator", "meta_phrase", "non_dialogue_text"}
         and issue.line_number
     }
+    truncated_fragment_line_numbers = {
+        issue.line_number
+        for issue in validation.issues
+        if issue.code == "truncated_fragment" and issue.line_number
+    }
     generic_filler_line_numbers = {
         issue.line_number
         for issue in validation.issues
@@ -293,10 +306,9 @@ def repair_dialogue_script_text(
     for line_number, line in enumerate(script_text.splitlines(), start=1):
         if line_number in line_numbers_to_remove:
             continue
-        line, team_should_replacement_index = _rewrite_generic_filler_line(
-            line,
-            team_should_replacement_index,
-        )
+        line, team_should_replacement_index = _rewrite_generic_filler_line(line, team_should_replacement_index)
+        if line_number in truncated_fragment_line_numbers:
+            line = _repair_truncated_fragment_line(line)
         if line_number in generic_filler_line_numbers:
             line = _remove_generic_filler_sentences(line)
             if not line.strip():
@@ -522,6 +534,23 @@ def _append_self_address_issues(dialogue_lines, issues: list[ScriptValidationIss
                 break
 
 
+def _append_truncated_fragment_issues(script_text: str, issues: list[ScriptValidationIssue]) -> None:
+    for line_number, raw_line in enumerate(script_text.splitlines(), start=1):
+        match = _SPEAKER_LINE_RE.match(raw_line.strip())
+        if not match:
+            continue
+        normalized_text = match.group("text").strip().casefold().replace("ё", "е")
+        if _TRUNCATED_END_RE.search(normalized_text):
+            issues.append(
+                ScriptValidationIssue(
+                    "warning",
+                    "Line appears to end with a truncated source fragment.",
+                    line_number=line_number,
+                    code="truncated_fragment",
+                ),
+            )
+
+
 def _remove_generic_filler_sentences(line: str) -> str:
     match = _SPEAKER_LINE_RE.match(line.strip())
     if not match:
@@ -538,6 +567,24 @@ def _remove_generic_filler_sentences(line: str) -> str:
     if not kept_sentences:
         return ""
     return f"{speaker}: {' '.join(kept_sentences)}"
+
+
+def _repair_truncated_fragment_line(line: str) -> str:
+    match = _SPEAKER_LINE_RE.match(line.strip())
+    if not match:
+        return line
+
+    speaker = match.group("speaker")
+    text = match.group("text").strip()
+    if re.search(r"(?:^|:\s*)\b(?:получите|устройства)\.?$", text, flags=re.IGNORECASE):
+        return ""
+    text = re.sub(
+        r"\s+(?:в|во|на|у|с|со|из|от|для|через|про|о|об|по|при|без|экс)\.?$",
+        ".",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return f"{speaker}: {text.strip()}" if text.strip() else ""
 
 
 def _rewrite_generic_filler_line(line: str, team_should_replacement_index: int) -> tuple[str, int]:
