@@ -202,6 +202,18 @@ episode_metadata.json
 make podcast-info
 ```
 
+Проверить окружение перед полным автозапуском:
+
+```bash
+make doctor
+make doctor-telegram
+```
+
+`make doctor` проверяет `.env`, список каналов, SQLite, ffmpeg/ffprobe,
+Ollama, TCP-доступность локального proxy и LLM, XTTS-референсы, музыку,
+обложку и свободное место на диске. `make doctor-telegram` дополнительно
+подключается к Telegram и проверяет сохранённую пользовательскую сессию.
+
 Длина выпуска и количество новостей настраиваются через `.env`:
 
 ```dotenv
