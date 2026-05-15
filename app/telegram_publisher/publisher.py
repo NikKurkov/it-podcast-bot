@@ -14,6 +14,7 @@ from telethon.errors import RPCError
 from app.config.settings import settings
 from app.db.repositories.episodes import mark_episode_published
 from app.db.session import SessionLocal, init_db
+from app.podcast.script_quality import build_script_quality_report, quality_gate_allows_tts
 from app.telegram_reader.client import create_telegram_client
 
 TELEGRAM_CAPTION_LIMIT = 1024
@@ -96,6 +97,21 @@ def build_episode_caption(package_path: Path) -> str:
     lines.extend(["", "Приятного прослушивания!"])
 
     return _trim_caption("\n".join(lines), TELEGRAM_CAPTION_LIMIT)
+
+
+def validate_episode_for_publish(package_path: Path) -> list[str]:
+    issues = []
+    if not (package_path / "audio.mp3").exists():
+        issues.append("audio.mp3 is missing")
+    script_path = package_path / "llm_script.md"
+    if not script_path.exists():
+        issues.append("llm_script.md is missing")
+    else:
+        report = build_script_quality_report(script_path.read_text(encoding="utf-8"))
+        allowed, blocking = quality_gate_allows_tts(report)
+        if not allowed:
+            issues.extend(f"script quality: {item}" for item in blocking)
+    return issues
 
 
 def build_episode_title(
