@@ -78,7 +78,9 @@ def main() -> None:
         final_args.extend(["--top", str(top)])
     if args.slug:
         final_args.extend(["--slug", args.slug])
-    if args.publish:
+    if args.script_only:
+        final_args.append("--no-publish")
+    elif args.publish:
         final_args.append("--publish")
 
     _run(final_args)

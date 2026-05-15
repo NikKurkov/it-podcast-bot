@@ -105,6 +105,36 @@ def test_auto_select_posts_prefers_db_episode_history(monkeypatch) -> None:
     assert selected_ids == [1]
 
 
+def test_auto_select_posts_filters_weak_podcast_candidates(monkeypatch) -> None:
+    post_a = _Post(1, "strong")
+    post_b = _Post(2, "weak")
+    selected_ids = []
+
+    monkeypatch.setattr(final_run, "get_posts_for_digest", lambda *args, **kwargs: [post_a, post_b])
+    monkeypatch.setattr(final_run, "get_recent_db_episode_post_ids", lambda session, limit=1: set())
+    monkeypatch.setattr(final_run, "get_recent_episode_post_ids", lambda limit=1: set())
+    monkeypatch.setattr(final_run, "load_source_weights", lambda: {})
+    monkeypatch.setattr(final_run, "load_exclude_keywords", lambda: [])
+    monkeypatch.setattr(final_run, "contains_excluded_keyword", lambda text, keywords: False)
+    monkeypatch.setattr(
+        final_run,
+        "rank_posts",
+        lambda posts, source_weights=None: [_RankedPost(post) for post in posts],
+    )
+    monkeypatch.setattr(final_run, "is_podcast_candidate", lambda ranked_post: ranked_post.post.id == 1)
+    monkeypatch.setattr(final_run, "diversify_ranked_posts", lambda ranked_posts, limit: ranked_posts[:limit])
+
+    def fake_update_editorial_state(session, post_ids, **kwargs):
+        if kwargs.get("selected") is True:
+            selected_ids.extend(post_ids)
+        return len(post_ids)
+
+    monkeypatch.setattr(final_run, "update_editorial_state", fake_update_editorial_state)
+
+    assert final_run._auto_select_posts(object(), pool_limit=10, top=5) == 1
+    assert selected_ids == [1]
+
+
 class _Post:
     def __init__(self, post_id: int, text: str) -> None:
         self.id = post_id

@@ -249,6 +249,16 @@ def diversify_ranked_posts(
     return selected
 
 
+def is_podcast_candidate(ranked_post: RankedPost, min_score: float = 1.0) -> bool:
+    if ranked_post.score < min_score:
+        return False
+    if "no IT or investigation signals" in ranked_post.penalties:
+        return False
+    if any(penalty.startswith("consumer topic:") for penalty in ranked_post.penalties) and not ranked_post.topics:
+        return False
+    return True
+
+
 def score_post(
     post: TelegramPost,
     now: datetime | None = None,
@@ -412,7 +422,7 @@ def _penalty_score(
     consumer_keywords = [
         keyword for keyword in CONSUMER_TOPIC_KEYWORDS if keyword in normalized_text
     ]
-    if consumer_keywords and relevance_score < 1.0 and investigation_score == 0:
+    if consumer_keywords and relevance_score < 1.0 and investigation_score < 1.0:
         penalty += min(4.0, 1.2 * len(consumer_keywords))
         penalties.append(f"consumer topic: {', '.join(sorted(consumer_keywords)[:4])}")
 
