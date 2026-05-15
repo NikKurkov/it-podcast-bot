@@ -7,6 +7,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.db.models import TelegramPost
+from app.db.repositories.episodes import record_episode_package
 from app.db.repositories.posts import get_selected_posts
 from app.audio.assembler import assemble_podcast
 from app.audio.dialogue import script_to_dialogue_lines
@@ -250,6 +251,15 @@ def create_episode_package(
         llm_model=llm_model,
         tts_provider=(tts_provider or settings.tts_provider) if with_audio else None,
         background_music=with_music if with_audio else None,
+    )
+    record_episode_package(
+        session,
+        slug=package_path.name,
+        title=package_title,
+        package_path=str(package_path),
+        post_ids=[post.id for post in posts],
+        audio_path=str(audio_mp3_path) if audio_mp3_path and audio_mp3_path.exists() else None,
+        metadata_path=str(metadata_path),
     )
 
     return EpisodePackage(

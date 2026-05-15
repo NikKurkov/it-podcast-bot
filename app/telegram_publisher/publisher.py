@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import shutil
 import subprocess
@@ -11,10 +12,13 @@ from typing import Any
 from telethon.errors import RPCError
 
 from app.config.settings import settings
+from app.db.repositories.episodes import mark_episode_published
+from app.db.session import SessionLocal, init_db
 from app.telegram_reader.client import create_telegram_client
 
 TELEGRAM_CAPTION_LIMIT = 1024
 PUBLISH_AUDIO_DIR = "publish"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -73,6 +77,7 @@ async def publish_episode_package(
         caption=caption,
     )
     write_publish_result(package_path / "telegram_publish.json", result)
+    _mark_package_published(package_path, result)
     return result
 
 
@@ -145,6 +150,22 @@ def write_publish_result(output_path: Path, result: TelegramPublishResult) -> Pa
     payload["published_at"] = datetime.now(timezone.utc).isoformat()
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return output_path
+
+
+def _mark_package_published(package_path: Path, result: TelegramPublishResult) -> None:
+    try:
+        init_db()
+        with SessionLocal() as session:
+            episode = mark_episode_published(
+                session,
+                slug=package_path.name,
+                channel_id=result.channel_id,
+                message_id=result.message_id,
+            )
+            if episode is None:
+                logger.info("Episode %s is not recorded in DB; publish JSON was written only.", package_path.name)
+    except Exception:
+        logger.exception("Could not update local episode publish history for %s", package_path)
 
 
 def _resolve_channel_id(value: str) -> int | str:
