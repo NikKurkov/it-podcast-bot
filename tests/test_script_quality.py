@@ -67,6 +67,27 @@ artem: Артем, практический вывод для разработч
     assert "практический вывод для разработчиков и пользователей" not in result.script_text
 
 
+def test_postprocess_dialogue_script_thins_excess_direct_addresses() -> None:
+    result = postprocess_dialogue_script(
+        """
+mark: Ника, открываем тему про доступность GitHub.
+nika: Марк, я бы сразу спросила про запасной доступ.
+gleb: Ника, запасной доступ вспоминают обычно после пожара.
+artem: Глеб, здесь важна воспроизводимость сборки.
+mark: Артём, зафиксируем риск для релизов.
+nika: Подожди, Глеб, но это же ломает обычный рабочий день.
+gleb: Марк, рабочий день ломает отсутствие плана.
+artem: Ника, команде нужен простой чеклист.
+""",
+    )
+
+    report = build_script_quality_report(result.script_text)
+
+    assert report["direct_address_lines"] <= 2
+    assert "Подожди, но это же ломает" in result.script_text
+    assert "Глеб, здесь важна" not in result.script_text
+
+
 def test_build_script_quality_report_detects_opening_rundown_and_transition() -> None:
     report = build_script_quality_report(
         """
