@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python
 
-.PHONY: setup setup-tts setup-xtts test check collect daily final final-silero final-silero-llm final-silero-llm-music final-xtts-llm-music podcast podcast-generate-and-publish podcast-publish podcast-preview podcast-script podcast-script-check podcast-audio podcast-remix podcast-info publish-latest stats sources list selected auto-select show rank csv digest script validate-script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music audio-xtts audio-xtts-music audio-report tts-sample tts-sample-silero tts-sample-xtts episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels clean-generated clean-generated-dry-run
+.PHONY: setup setup-tts setup-xtts test check collect daily final final-silero final-silero-llm final-silero-llm-music final-xtts-llm-music podcast podcast-generate-and-publish podcast-publish podcast-preview podcast-script podcast-script-check podcast-audio podcast-remix podcast-info publish-latest stats sources list selected auto-select show rank csv digest script validate-script ollama-cpu llm-check llm-script llm-dialogue-script llm-script-fast llm-script-final audio audio-silero audio-silero-music audio-xtts audio-xtts-music audio-report voice-report tts-sample tts-sample-silero tts-sample-xtts episode episodes episode-package episode-package-silero episode-package-silero-music unprocess validate backup channels clean-generated clean-generated-dry-run
 
 setup:
 	bash scripts/setup_env.sh
@@ -136,6 +136,9 @@ audio-xtts-music:
 
 audio-report:
 	$(PYTHON) scripts/audio_report.py data/audio/latest_episode.wav data/audio/latest_episode.mp3
+
+voice-report:
+	$(PYTHON) scripts/voice_report.py
 
 tts-sample:
 	$(PYTHON) scripts/make_tts_sample.py
