@@ -10,6 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config.settings import settings
+from app.db.repositories.episodes import get_recent_episode_post_ids as get_recent_db_episode_post_ids
 from app.db.repositories.posts import get_posts_for_digest, update_editorial_state
 from app.db.session import SessionLocal, init_db
 from app.pipeline.episode_package import create_episode_package
@@ -111,7 +112,9 @@ def _auto_select_posts(session, pool_limit: int, top: int) -> int:
     existing_posts = get_posts_for_digest(session, limit=10_000, include_rejected=True)
     update_editorial_state(session, [post.id for post in existing_posts], selected=False)
 
-    previous_episode_post_ids = get_recent_episode_post_ids(limit=1)
+    previous_episode_post_ids = get_recent_db_episode_post_ids(session, limit=1)
+    if not previous_episode_post_ids:
+        previous_episode_post_ids = get_recent_episode_post_ids(limit=1)
     posts = get_posts_for_digest(session, limit=pool_limit)
     if previous_episode_post_ids:
         posts = [post for post in posts if post.id not in previous_episode_post_ids]

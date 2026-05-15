@@ -289,6 +289,7 @@ def test_publish_episode_package_sends_audio_and_writes_result(tmp_path: Path, m
     client = FakeTelegramClient()
     monkeypatch.setattr(publisher, "create_telegram_client", lambda: client)
     monkeypatch.setattr(publisher.settings, "podcast_cover_image", None)
+    monkeypatch.setattr(publisher, "_mark_package_published", lambda package_path, result: None)
 
     result = asyncio.run(publish_episode_package(package_path, channel_id="-1001"))
 
@@ -311,6 +312,7 @@ def test_publish_episode_package_resolves_numeric_channel_from_dialogs(
     client = FakeTelegramClient(resolve_numeric=False)
     monkeypatch.setattr(publisher, "create_telegram_client", lambda: client)
     monkeypatch.setattr(publisher.settings, "podcast_cover_image", None)
+    monkeypatch.setattr(publisher, "_mark_package_published", lambda package_path, result: None)
 
     asyncio.run(publish_episode_package(package_path, channel_id="-10012345"))
 
@@ -327,6 +329,7 @@ def test_publish_episode_package_resolves_numeric_channel_by_dialog_id(
     client = FakeTelegramClient(resolve_numeric=False, dialog_id=-10067890, entity_id=111)
     monkeypatch.setattr(publisher, "create_telegram_client", lambda: client)
     monkeypatch.setattr(publisher.settings, "podcast_cover_image", None)
+    monkeypatch.setattr(publisher, "_mark_package_published", lambda package_path, result: None)
 
     asyncio.run(publish_episode_package(package_path, channel_id="-10067890"))
 
