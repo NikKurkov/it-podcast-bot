@@ -30,6 +30,7 @@ _OUTRO_END_MARKER_RE = re.compile(
     r"выпуск\s+заканчивается)",
     re.IGNORECASE,
 )
+_CHARACTER_NAME_RE = r"(?:Марк|Ника|Глеб|Арт[её]м)"
 
 
 @dataclass(frozen=True)
@@ -206,6 +207,7 @@ def _normalize_editorial_text(script_text: str) -> str:
     phrase_counts: Counter[str] = Counter()
     lines = [_normalize_dialogue_line(line, phrase_counts=phrase_counts) for line in result.splitlines()]
     lines = _remove_duplicate_opening_lines([line for line in lines if line])
+    lines = _thin_excess_direct_addresses(lines)
     return "\n".join(lines).strip()
 
 
@@ -361,6 +363,65 @@ def _remove_duplicate_opening_lines(lines: list[str]) -> list[str]:
             opening_seen = True
         result.append(line)
     return result
+
+
+def _thin_excess_direct_addresses(lines: list[str]) -> list[str]:
+    allowed_addresses = _allowed_direct_address_count(len(lines))
+    if allowed_addresses < 0:
+        return lines
+
+    result = []
+    direct_address_count = 0
+    for line in lines:
+        if not _DIRECT_ADDRESS_RE.search(line):
+            result.append(line)
+            continue
+
+        direct_address_count += 1
+        if direct_address_count <= allowed_addresses:
+            result.append(line)
+            continue
+
+        result.append(_remove_vocative_address(line))
+    return result
+
+
+def _allowed_direct_address_count(lines_count: int) -> int:
+    if lines_count < 8:
+        return 3
+    if lines_count < 16:
+        return 2
+    return 2
+
+
+def _remove_vocative_address(line: str) -> str:
+    match = re.match(r"^(?P<speaker>[\wА-Яа-яЁё-]+)\s*[:：]\s*(?P<text>.*)$", line)
+    if not match:
+        return line
+
+    speaker = match.group("speaker")
+    text = match.group("text").strip()
+    text = re.sub(
+        rf"^((?:подожди|погоди|секунду|стоп|слушай|смотри|ой)\s*,\s*){_CHARACTER_NAME_RE}\s*,\s*",
+        r"\1",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        rf"^\s*{_CHARACTER_NAME_RE}\s*,\s*",
+        "",
+        text,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        rf"(?<=[.!?])\s*{_CHARACTER_NAME_RE}\s*,\s*",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\s{2,}", " ", text).strip()
+    return f"{speaker}: {text}" if text else ""
 
 
 def _has_outro(dialogue_lines) -> bool:
