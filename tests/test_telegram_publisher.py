@@ -7,6 +7,7 @@ from app.telegram_publisher.publisher import (
     build_episode_caption,
     prepare_publish_audio,
     publish_episode_package,
+    validate_episode_for_publish,
 )
 
 
@@ -234,6 +235,41 @@ def test_prepare_publish_audio_embeds_cover_with_ffmpeg(
     assert output_path.exists()
     assert calls
     assert str(cover_path) in calls[0]
+
+
+def test_validate_episode_for_publish_reports_missing_files(tmp_path: Path) -> None:
+    package_path = tmp_path / "episode"
+    package_path.mkdir()
+
+    issues = validate_episode_for_publish(package_path)
+
+    assert "audio.mp3 is missing" in issues
+    assert "llm_script.md is missing" in issues
+
+
+def test_validate_episode_for_publish_allows_good_episode(tmp_path: Path) -> None:
+    package_path = tmp_path / "episode"
+    package_path.mkdir()
+    (package_path / "audio.mp3").write_bytes(b"fake mp3")
+    (package_path / "llm_script.md").write_text(
+        """
+mark: Добрый день, сегодня девятое мая, и вы слушаете НикКаст с обзором главных новостей в мире айти.
+nika: В выпуске: GitHub и инфраструктура.
+gleb: Дальше у нас риск с доступностью.
+artem: Проверьте зеркала и план отката.
+mark: А вот теперь переключаемся к безопасности.
+nika: Здесь важно проверить доступы.
+gleb: Без логов команда узнает о проблеме слишком поздно.
+artem: Зафиксируйте мониторинг и ответственных.
+mark: На этом всё, это были главные новости на сегодня.
+nika: Хорошего вам дня.
+gleb: Проверяйте резервные сценарии.
+artem: До новых встреч.
+""",
+        encoding="utf-8",
+    )
+
+    assert validate_episode_for_publish(package_path) == []
 
 
 def test_resolve_channel_id_keeps_usernames_and_converts_numeric_ids() -> None:
