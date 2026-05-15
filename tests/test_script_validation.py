@@ -240,6 +240,33 @@ artem: Практический риск здесь в интеграции.
     assert any(issue.code == "self_address" for issue in result.issues)
 
 
+def test_validate_dialogue_script_blocks_truncated_fragments() -> None:
+    result = validate_dialogue_script(
+        """
+mark: Сегодня смотрим на практический риск.
+nika: Я бы перевела это проще: Получите.
+gleb: Факт выглядит оборванным и заканчивается на предлог в.
+artem: Практический риск здесь в интеграции.
+""",
+    )
+
+    assert result.has_blocking_issues is True
+    assert any(issue.code == "truncated_fragment" for issue in result.issues)
+
+
+def test_repair_dialogue_script_removes_tiny_truncated_fragment_line() -> None:
+    script = """
+mark: Сегодня смотрим на практический риск.
+nika: Я бы перевела это проще: Получите.
+gleb: Факт выглядит оборванным и заканчивается на предлог в.
+artem: Практический риск здесь в интеграции.
+"""
+    repaired = repair_dialogue_script_text(script)
+
+    assert "Получите" not in repaired
+    assert "предлог в." not in repaired
+
+
 def test_validate_dialogue_script_blocks_non_dialogue_text() -> None:
     result = validate_dialogue_script(
         """

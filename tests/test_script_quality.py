@@ -50,6 +50,21 @@ artem: Проверьте доступы и план отката.
     assert "..." not in result.script_text
 
 
+def test_postprocess_dialogue_script_cleans_truncated_rundown_fragments() -> None:
+    result = postprocess_dialogue_script(
+        """
+mark: Добрый день, сегодня пятнадцатое мая, и вы слушаете НикКаст с обзором главных новостей в мире айти.
+nika: В выпуске: Новый Li Auto L9 Livis официально появится в России во второй половине года Продажи экс; Crocs и Red Bull выпустят коллекцию сабо в виде болидов Формулы-1 Старт продаж заплан.
+gleb: Я видел похожие истории.
+artem: Проверьте доступы и план отката.
+""",
+    )
+
+    assert "Продажи экс" not in result.script_text
+    assert "заплан" not in result.script_text
+    assert "..." not in result.script_text
+
+
 def test_postprocess_dialogue_script_varies_mechanical_phrases_and_self_addresses() -> None:
     result = postprocess_dialogue_script(
         """
