@@ -62,6 +62,10 @@ class TelegramPost(Base):
     editor_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     source_channel: Mapped[SourceChannel] = relationship(back_populates="posts")
+    episode_links: Mapped[list["EpisodePost"]] = relationship(
+        back_populates="telegram_post",
+        cascade="all, delete-orphan",
+    )
 
 
 class EpisodeDraft(Base):
@@ -80,3 +84,49 @@ class EpisodeDraft(Base):
         onupdate=utc_now,
         nullable=False,
     )
+
+
+class Episode(Base):
+    __tablename__ = "episodes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="draft", nullable=False)
+    package_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    audio_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    metadata_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    telegram_channel_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    telegram_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    posts: Mapped[list["EpisodePost"]] = relationship(
+        back_populates="episode",
+        cascade="all, delete-orphan",
+        order_by="EpisodePost.position",
+    )
+
+
+class EpisodePost(Base):
+    __tablename__ = "episode_posts"
+    __table_args__ = (
+        UniqueConstraint("episode_id", "telegram_post_id", name="uq_episode_post_episode_post"),
+        UniqueConstraint("episode_id", "position", name="uq_episode_post_position"),
+        Index("ix_episode_posts_telegram_post_id", "telegram_post_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id"), nullable=False)
+    telegram_post_id: Mapped[int] = mapped_column(ForeignKey("telegram_posts.id"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    episode: Mapped[Episode] = relationship(back_populates="posts")
+    telegram_post: Mapped[TelegramPost] = relationship(back_populates="episode_links")
