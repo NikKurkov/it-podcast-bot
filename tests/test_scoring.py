@@ -153,8 +153,45 @@ def test_score_post_breakdown_penalizes_non_it_text() -> None:
 
         breakdown = score_post_breakdown(post, now=now)
 
-        assert breakdown.penalty >= 4
+        assert breakdown.penalty >= 8
         assert "no IT or investigation signals" in breakdown.penalties
+
+
+def test_score_post_breakdown_penalizes_consumer_gadget_news_without_it_angle() -> None:
+    session_factory = _make_session_factory()
+    now = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with session_factory() as session:
+        source = get_or_create_source(session, "general_tech")
+        consumer_post = save_post(
+            session,
+            source,
+            {
+                "telegram_message_id": 1,
+                "message_date": now,
+                "text": "Новый Li Auto L9 официально появится в России во второй половине года",
+                "views": 10000,
+                "forwards": 100,
+            },
+        )
+        ai_post = save_post(
+            session,
+            source,
+            {
+                "telegram_message_id": 2,
+                "message_date": now,
+                "text": "В GitHub Actions добавили AI-проверку supply chain зависимостей для Python API",
+                "views": 1000,
+                "forwards": 20,
+            },
+        )
+
+        consumer_breakdown = score_post_breakdown(consumer_post, now=now)
+        ai_breakdown = score_post_breakdown(ai_post, now=now)
+
+        assert consumer_breakdown.penalty >= 8
+        assert any("consumer topic" in item for item in consumer_breakdown.penalties)
+        assert ai_breakdown.total > consumer_breakdown.total
 
 
 def test_score_post_breakdown_uses_source_weights() -> None:

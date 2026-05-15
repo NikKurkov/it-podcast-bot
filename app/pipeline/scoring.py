@@ -109,6 +109,24 @@ LOW_SIGNAL_KEYWORDS = {
     "шибари",
 }
 
+CONSUMER_TOPIC_KEYWORDS = {
+    "авто",
+    "автомобил",
+    "болид",
+    "игр",
+    "кроссов",
+    "планшет",
+    "смартфон",
+    "сабо",
+    "тапк",
+    "фильм",
+    "формул",
+    "crocs",
+    "li auto",
+    "subnautica",
+    "xperia",
+}
+
 TOPIC_KEYWORDS = {
     "ai": {
         "ai",
@@ -388,8 +406,15 @@ def _penalty_score(
         penalties.append("many emoji")
 
     if relevance_score == 0 and investigation_score == 0:
-        penalty += 4.0
+        penalty += 8.0
         penalties.append("no IT or investigation signals")
+
+    consumer_keywords = [
+        keyword for keyword in CONSUMER_TOPIC_KEYWORDS if keyword in normalized_text
+    ]
+    if consumer_keywords and relevance_score < 1.0 and investigation_score == 0:
+        penalty += min(4.0, 1.2 * len(consumer_keywords))
+        penalties.append(f"consumer topic: {', '.join(sorted(consumer_keywords)[:4])}")
 
     return penalty, penalties
 
