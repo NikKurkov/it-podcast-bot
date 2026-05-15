@@ -356,28 +356,9 @@ def _build_deterministic_chunk_dialogue(chunk_text: str, chunk_index: int) -> st
         return ""
 
     lines = []
-    speakers = ["mark", "nika", "gleb", "artem"]
-    transitions = [
-        "Следующая тема",
-        "Дальше у нас история",
-        "Переключаемся",
-        "Теперь к другому сигналу",
-    ]
-    conclusions = [
-        "Вывод простой: проверяем факты до того, как это станет срочной задачей.",
-        "Для команды это повод проверить доступы, данные и резервный план.",
-        "Здесь лучше не спорить с хайпом, а посмотреть на поддержку и эксплуатацию.",
-        "Практически это означает: фиксируем риск и заранее готовим обходной путь.",
-    ]
     for index, topic in enumerate(topics):
-        lead = speakers[(chunk_index + index - 1) % len(speakers)]
-        responder = speakers[(chunk_index + index) % len(speakers)]
-        expert = speakers[(chunk_index + index + 1) % len(speakers)]
-        transition = transitions[(chunk_index + index - 1) % len(transitions)]
-        conclusion = conclusions[(chunk_index + index - 1) % len(conclusions)]
-        lines.append(f"{lead}: {transition}: {topic['claim']}.")
-        lines.append(f"{responder}: По исходной новости: {topic['fact']}.")
-        lines.append(f"{expert}: {conclusion}")
+        topic_index = chunk_index + index - 1
+        lines.extend(_build_fallback_topic_scene(topic, topic_index))
     return "\n".join(lines)
 
 
@@ -388,44 +369,92 @@ def _build_deterministic_dialogue_from_blocks(blocks: list[str]) -> str:
     if not topics:
         return ""
 
-    speakers = ["mark", "nika", "gleb", "artem"]
-    transitions = [
-        "Первая тема",
-        "А вот следующая новость",
-        "Дальше у нас история",
-        "Переключаемся на другой риск",
-        "Теперь коротко про ещё один сигнал",
-    ]
-    conclusions = [
-        "Вывод простой: проверяем факты до того, как это станет срочной задачей.",
-        "Для команды это повод проверить доступы, данные и резервный план.",
-        "Здесь лучше не спорить с хайпом, а посмотреть на поддержку и эксплуатацию.",
-        "Практически это означает: фиксируем риск и заранее готовим обходной путь.",
-        "Главное не делать вид, что внешний сервис или новый инструмент всегда будет вести себя предсказуемо.",
-    ]
     body = []
     for index, topic in enumerate(topics):
-        lead = speakers[index % len(speakers)]
-        responder = speakers[(index + 1) % len(speakers)]
-        expert = speakers[(index + 2) % len(speakers)]
-        transition = transitions[index % len(transitions)]
-        conclusion = conclusions[index % len(conclusions)]
-        body.extend(
-            [
-                f"{lead}: {transition}: {topic['claim']}.",
-                f"{responder}: По исходной новости: {topic['fact']}.",
-                f"{expert}: {conclusion}",
-            ],
-        )
+        body.extend(_build_fallback_topic_scene(topic, index))
+        if index in {1, 5} and index < len(topics) - 1:
+            body.append(_fallback_live_moment(index))
     return "\n".join(
         [
             *body,
-            "mark: На этом всё, это были главные новости на сегодня.",
-            "nika: Хорошего вам дня.",
-            "gleb: Проверяйте резервные сценарии.",
-            "artem: До новых встреч.",
+            "mark: На этом всё, это были главные новости на сегодня. Финальный вывод: держите рядом факты, доступы и запасной план.",
+            "nika: Хорошего вам дня. Пусть обновления сегодня будут скучными, в хорошем смысле.",
+            "gleb: А если не будут, пусть хотя бы логи не молчат.",
+            "artem: С вами были Марк, Ника, Глеб и Артём. До новых встреч.",
         ],
     )
+
+
+def _build_fallback_topic_scene(topic: dict[str, str], index: int) -> list[str]:
+    patterns = [
+        (
+            "mark",
+            "nika",
+            "gleb",
+            "artem",
+            "Первая зацепка",
+            "Если убрать витрину, здесь суть такая",
+        ),
+        (
+            "nika",
+            "gleb",
+            "artem",
+            "mark",
+            "А вот следующая тема",
+            "Я бы перевела это проще",
+        ),
+        (
+            "gleb",
+            "artem",
+            "nika",
+            "mark",
+            "Дальше история с подвохом",
+            "Сухой остаток из новости",
+        ),
+        (
+            "artem",
+            "mark",
+            "gleb",
+            "nika",
+            "Переключаемся на практический риск",
+            "Факт, на который я бы смотрел",
+        ),
+    ]
+    lead, responder, skeptic, closer, transition, fact_prefix = patterns[index % len(patterns)]
+    return [
+        f"{lead}: {transition}: {topic['claim']}.",
+        f"{responder}: {fact_prefix}: {topic['fact']}.",
+        f"{skeptic}: {_fallback_skeptic_line(index)}",
+        f"{closer}: {_fallback_takeaway_line(index)}",
+    ]
+
+
+def _fallback_skeptic_line(index: int) -> str:
+    lines = [
+        "Красивый анонс сам по себе ничего не гарантирует: проверять придётся реальные ограничения.",
+        "Я бы не радовался раньше времени. Обычно боль прячется в доступах, интеграциях и поддержке.",
+        "Звучит бодро, но старый вопрос остаётся: кто будет чинить это, когда всё внезапно упрётся в крайний случай.",
+        "Тут не хайп важен, а то, насколько команда понимает, где у неё точка отказа.",
+    ]
+    return lines[index % len(lines)]
+
+
+def _fallback_takeaway_line(index: int) -> str:
+    lines = [
+        "Проверьте, какие системы и процессы это реально задевает, а не только как выглядит заголовок.",
+        "Зафиксируйте, что меняется для сборки, данных, доступов или пользовательского сценария.",
+        "Если тема касается внешнего сервиса, заранее держите обходной маршрут и понятный статус для команды.",
+        "Практический смысл простой: меньше догадок, больше проверяемых фактов и наблюдаемости.",
+    ]
+    return lines[index % len(lines)]
+
+
+def _fallback_live_moment(index: int) -> str:
+    moments = [
+        "nika: Секунду, у кого-то клавиатура так щёлкает, будто уже чинят прод. Продолжаем.",
+        "gleb: Кхм. Если это был микрофон, то он тоже просит резервный план.",
+    ]
+    return moments[index % len(moments)]
 
 
 def _compact_news_block(block: str) -> str:
