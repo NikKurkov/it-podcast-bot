@@ -15,3 +15,16 @@ def test_resolve_latest_episode_ignores_packages_without_audio(tmp_path: Path, m
     (newer_with_audio / "audio.mp3").write_bytes(b"newer")
 
     assert publish_latest._resolve_episode_path("latest").resolve() == newer_with_audio
+
+
+def test_publish_latest_parse_dry_run_and_skip_quality_gate(monkeypatch) -> None:
+    monkeypatch.setattr(
+        publish_latest.sys,
+        "argv",
+        ["publish_latest.py", "--dry-run", "--skip-quality-gate"],
+    )
+
+    args = publish_latest.parse_args()
+
+    assert args.dry_run is True
+    assert args.skip_quality_gate is True
