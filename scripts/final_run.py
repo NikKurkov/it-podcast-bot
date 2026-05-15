@@ -13,6 +13,7 @@ from app.config.settings import settings
 from app.db.repositories.posts import get_posts_for_digest, update_editorial_state
 from app.db.session import SessionLocal, init_db
 from app.pipeline.episode_package import create_episode_package
+from app.pipeline.episode_history import get_recent_episode_post_ids
 from app.pipeline.filters import contains_excluded_keyword, load_exclude_keywords
 from app.pipeline.episode_report import format_episode_report
 from app.pipeline.scoring import diversify_ranked_posts, rank_posts
@@ -110,7 +111,10 @@ def _auto_select_posts(session, pool_limit: int, top: int) -> int:
     existing_posts = get_posts_for_digest(session, limit=10_000, include_rejected=True)
     update_editorial_state(session, [post.id for post in existing_posts], selected=False)
 
+    previous_episode_post_ids = get_recent_episode_post_ids(limit=1)
     posts = get_posts_for_digest(session, limit=pool_limit)
+    if previous_episode_post_ids:
+        posts = [post for post in posts if post.id not in previous_episode_post_ids]
     ranked_posts = rank_posts(posts, source_weights=load_source_weights())
     keywords = load_exclude_keywords()
     ranked_posts = [
