@@ -65,6 +65,37 @@ artem: Проверьте доступы и план отката.
     assert "..." not in result.script_text
 
 
+def test_postprocess_dialogue_script_replaces_weak_rundown_titles() -> None:
+    result = postprocess_dialogue_script(
+        """
+mark: Добрый день, сегодня девятнадцатое мая, и вы слушаете НикКаст с обзором главных новостей в мире айти.
+nika: В выпуске: Finally... 1 кГц LG готовит первый Full HD-монитор; Факт дня: этим летом россиянам доступно меньше прямых рейсов; Krea 2, которая создаёт.
+gleb: Я видел похожие истории.
+artem: Проверьте доступы и план отката.
+""",
+    )
+
+    assert "Finally" not in result.script_text
+    assert "Факт дня;" not in result.script_text
+    assert "1 кГц LG готовит первый Full HD-монитор" in result.script_text
+    assert "этим летом россиянам доступно меньше прямых рейсов" in result.script_text
+    assert "которая создаёт" not in result.script_text
+
+
+def test_postprocess_dialogue_script_removes_standalone_weak_transition_titles() -> None:
+    result = postprocess_dialogue_script(
+        """
+nika: А вот следующая тема: Finally.
+gleb: Я бы перевела это проще: 1 кГц LG готовит к выпуску первый Full HD-монитор с поддержкой 1000 Гц.
+artem: Переключаемся на практический риск: Факт дня: этим летом россиянам доступно меньше прямых рейсов.
+""",
+    )
+
+    assert "А вот следующая тема: Finally" not in result.script_text
+    assert "Переключаемся на практический риск: этим летом" in result.script_text
+    assert "Full HD-монитор" in result.script_text
+
+
 def test_postprocess_dialogue_script_varies_mechanical_phrases_and_self_addresses() -> None:
     result = postprocess_dialogue_script(
         """
@@ -80,6 +111,35 @@ artem: Артем, практический вывод для разработч
     assert "gleb: Глеб," not in result.script_text
     assert "artem: Артем," not in result.script_text
     assert "практический вывод для разработчиков и пользователей" not in result.script_text
+
+
+def test_postprocess_dialogue_script_varies_repeated_stock_sentences() -> None:
+    result = postprocess_dialogue_script(
+        """
+mark: Тут не хайп важен, а то, насколько команда понимает, где у неё точка отказа.
+nika: Тут не хайп важен, а то, насколько команда понимает, где у неё точка отказа.
+gleb: Практический смысл простой: меньше догадок, больше проверяемых фактов и наблюдаемости.
+artem: Практический смысл простой: меньше догадок, больше проверяемых фактов и наблюдаемости.
+""",
+    )
+
+    assert result.script_text.count("Тут не хайп важен") <= 1
+    assert result.script_text.count("Практический смысл простой") <= 1
+    assert "точка отказа" in result.script_text
+
+
+def test_postprocess_dialogue_script_smooths_repeated_checking_phrase() -> None:
+    result = postprocess_dialogue_script(
+        """
+mark: Анонс звучит бодро, но его еще надо проверять: проверять придётся реальные ограничения.
+nika: Витрина красивая, а ограничения всё равно придется смотреть руками: проверять придётся реальные ограничения.
+gleb: Тут не хайп важен, а то, насколько команда понимает, где у неё точка отказа.
+artem: Практический смысл простой: меньше догадок, больше проверяемых фактов и наблюдаемости.
+""",
+    )
+
+    assert "проверять: проверять" not in result.script_text
+    assert "смотреть руками: проверять" not in result.script_text
 
 
 def test_postprocess_dialogue_script_thins_excess_direct_addresses() -> None:

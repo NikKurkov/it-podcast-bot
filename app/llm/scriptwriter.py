@@ -327,7 +327,9 @@ def _build_chunk_user_prompt(chunk_text: str, chunk_index: int, chunks_total: in
         f"Блок {chunk_index} из {chunks_total}. Напиши фрагмент разговора по этим новостям.\n\n"
         f"{chunk_text}\n\n"
         "Верни только 4-8 строк диалога. Не делай приветствие и финальное прощание. "
-        "Не произноси ссылки и строки Fact lock дословно."
+        "Не произноси ссылки и строки Fact lock дословно. "
+        "Если тема выглядит как consumer/gadget/lifestyle без явного IT-механизма, "
+        "не делай из неё production-риск и не добавляй советы про доступы, логи или резервный план."
     )
 
 
@@ -386,6 +388,9 @@ def _build_deterministic_dialogue_from_blocks(blocks: list[str]) -> str:
 
 
 def _build_fallback_topic_scene(topic: dict[str, str], index: int) -> list[str]:
+    if topic.get("consumer") == "true":
+        return _build_consumer_signal_scene(topic, index)
+
     patterns = [
         (
             "mark",
@@ -424,27 +429,45 @@ def _build_fallback_topic_scene(topic: dict[str, str], index: int) -> list[str]:
     return [
         f"{lead}: {transition}: {topic['claim']}.",
         f"{responder}: {fact_prefix}: {topic['fact']}.",
-        f"{skeptic}: {_fallback_skeptic_line(index)}",
-        f"{closer}: {_fallback_takeaway_line(index)}",
+        f"{skeptic}: {_fallback_skeptic_line(topic, index)}",
+        f"{closer}: {_fallback_takeaway_line(topic, index)}",
     ]
 
 
-def _fallback_skeptic_line(index: int) -> str:
+def _build_consumer_signal_scene(topic: dict[str, str], index: int) -> list[str]:
+    patterns = [
+        ("mark", "nika", "gleb", "artem", "Короткий сигнал, без лишнего расследования"),
+        ("nika", "mark", "artem", "gleb", "В слабых сигналах есть такая история"),
+        ("gleb", "artem", "nika", "mark", "Это скорее заметка на полях"),
+        ("artem", "gleb", "mark", "nika", "Отмечу как consumer-сигнал"),
+    ]
+    lead, responder, skeptic, closer, transition = patterns[index % len(patterns)]
+    return [
+        f"{lead}: {transition}: {topic['claim']}.",
+        f"{responder}: По исходной новости, факт такой: {topic['fact']}.",
+        f"{skeptic}: Я бы не притворялся, что здесь внезапно появился production-риск. Это слабее основных IT-тем.",
+        f"{closer}: Держим это коротко: полезно знать контекст рынка, но технических действий из новости не следует.",
+    ]
+
+
+def _fallback_skeptic_line(topic: dict[str, str], index: int) -> str:
+    subject = _topic_subject(topic)
     lines = [
-        "Красивый анонс сам по себе ничего не гарантирует: проверять придётся реальные ограничения.",
-        "Я бы не радовался раньше времени. Обычно боль прячется в доступах, интеграциях и поддержке.",
-        "Звучит бодро, но старый вопрос остаётся: кто будет чинить это, когда всё внезапно упрётся в крайний случай.",
-        "Тут не хайп важен, а то, насколько команда понимает, где у неё точка отказа.",
+        f"Я бы проверил не заголовок, а конкретное ограничение вокруг {subject}.",
+        f"Звучит заметно, но без деталей по {subject} легко перепутать сигнал с шумом.",
+        f"Здесь риск не в самом анонсе, а в том, насколько понятно, что именно меняется в {subject}.",
+        f"Я бы не делал выводов шире фактов: сначала смотрим, где {subject} реально задевает пользователей или команды.",
     ]
     return lines[index % len(lines)]
 
 
-def _fallback_takeaway_line(index: int) -> str:
+def _fallback_takeaway_line(topic: dict[str, str], index: int) -> str:
+    subject = _topic_subject(topic)
     lines = [
-        "Проверьте, какие системы и процессы это реально задевает, а не только как выглядит заголовок.",
-        "Зафиксируйте, что меняется для сборки, данных, доступов или пользовательского сценария.",
-        "Если тема касается внешнего сервиса, заранее держите обходной маршрут и понятный статус для команды.",
-        "Практический смысл простой: меньше догадок, больше проверяемых фактов и наблюдаемости.",
+        f"Практический шаг простой: отделите подтверждённый факт про {subject} от рекламной или эмоциональной обвязки.",
+        f"Запишите, что именно известно про {subject}, а что пока остаётся предположением.",
+        f"Если {subject} влияет на ваш продукт или процесс, проверьте это отдельным тестом, а не по одному заголовку.",
+        f"Вывод: меньше универсальных советов, больше проверки конкретного механизма в истории про {subject}.",
     ]
     return lines[index % len(lines)]
 
@@ -480,6 +503,7 @@ def _extract_fact_topics(chunk_text: str) -> list[dict[str, str]]:
             {
                 "claim": _shorten_for_dialogue(claim),
                 "fact": _shorten_for_dialogue(fact),
+                "consumer": "true" if _is_consumer_topic(f"{claim} {fact}") else "false",
             },
         )
     return topics
@@ -487,9 +511,79 @@ def _extract_fact_topics(chunk_text: str) -> list[dict[str, str]]:
 
 def _shorten_for_dialogue(text: str, max_chars: int = 180) -> str:
     text = " ".join(text.split()).strip(" .,:;!?—-")
+    text = _drop_weak_leading_title(text)
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 3].rstrip() + "..."
+
+
+def _drop_weak_leading_title(text: str) -> str:
+    match = re.match(
+        r"^(?:finally|факт дня|важно|срочно)\s*(?:[.!?…:—–-]+\s+|:\s*)(?P<tail>.+)$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return text
+    return match.group("tail").strip(" .,:;!?—-")
+
+
+def _topic_subject(topic: dict[str, str]) -> str:
+    text = _drop_weak_leading_title(topic.get("claim") or topic.get("fact") or "этой новости")
+    text = re.split(r"\s+[—–-]\s+|[.:?!…]+(?:\s+|$)", text, maxsplit=1)[0]
+    words = text.strip(" .,:;!?—-").split()
+    if not words:
+        return "этой новости"
+    return " ".join(words[:6])
+
+
+def _is_consumer_topic(text: str) -> bool:
+    normalized = text.casefold().replace("ё", "е")
+    consumer_keywords = {
+        "авто",
+        "автомобил",
+        "болид",
+        "игр",
+        "кроссов",
+        "монитор",
+        "наушник",
+        "планшет",
+        "смартфон",
+        "сабо",
+        "тапк",
+        "телевизор",
+        "фильм",
+        "формул",
+        "crocs",
+        "li auto",
+        "red bull",
+        "sony 1000x",
+        "subnautica",
+        "xperia",
+    }
+    strong_it_keywords = {
+        "api",
+        "backend",
+        "cve",
+        "devops",
+        "github",
+        "kubernetes",
+        "llm",
+        "openai",
+        "python",
+        "security",
+        "уязвимост",
+        "инфраструктур",
+        "разработ",
+        "репозитор",
+        "модел",
+        "нейросет",
+        "агент",
+        "ии-агент",
+    }
+    return any(keyword in normalized for keyword in consumer_keywords) and not any(
+        keyword in normalized for keyword in strong_it_keywords
+    )
 
 
 def _load_system_prompt() -> str:

@@ -267,6 +267,67 @@ Fact lock:
     assert "OONI зафиксировал" in script_text
 
 
+def test_deterministic_chunk_fallback_does_not_invent_production_risk_for_consumer_topic(
+    monkeypatch,
+) -> None:
+    def fake_rewrite(*args, **kwargs):
+        raise RuntimeError("local model timed out")
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", fake_rewrite)
+
+    draft = """
+### 1. @src #1
+Fact lock:
+- Main claim: Crocs и Red Bull выпустят коллекцию сабо в виде болидов Формулы-1
+- Allowed fact: Старт продаж запланирован на 21 мая
+"""
+
+    script_text, validation = scriptwriter.rewrite_chunked_dialogue_script_draft(
+        draft,
+        model="local-model",
+        chunk_size=2,
+    )
+
+    assert validation.has_structural_blocking_issues is False
+    consumer_scene = script_text.split("mark: На этом всё", 1)[0]
+
+    assert "production-риск" in consumer_scene
+    assert "технических действий из новости не следует" in consumer_scene
+    assert "резервный план" not in consumer_scene
+    assert "доступ" not in consumer_scene.casefold()
+
+
+def test_deterministic_chunk_fallback_keeps_monitor_news_as_consumer_signal(
+    monkeypatch,
+) -> None:
+    def fake_rewrite(*args, **kwargs):
+        raise RuntimeError("local model timed out")
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", fake_rewrite)
+
+    draft = """
+### 1. @src #1
+Fact lock:
+- Main claim: Finally... 1 кГц LG готовит к выпуску первый Full HD-монитор с поддержкой 1000 Гц
+- Allowed fact: Ранее такую частоту обновления показывали только прототипы
+"""
+
+    script_text, validation = scriptwriter.rewrite_chunked_dialogue_script_draft(
+        draft,
+        model="local-model",
+        chunk_size=2,
+    )
+
+    assert validation.has_structural_blocking_issues is False
+    consumer_scene = script_text.split("mark: На этом всё", 1)[0]
+
+    assert "Finally" not in consumer_scene
+    assert "Full HD-монитор" in consumer_scene
+    assert "технических действий из новости не следует" in consumer_scene
+    assert "резервный план" not in consumer_scene
+    assert "доступ" not in consumer_scene.casefold()
+
+
 def test_rewrite_chunked_dialogue_script_draft_falls_back_on_blocking_quality(
     monkeypatch,
 ) -> None:
@@ -328,6 +389,13 @@ Fact lock:
     assert script_text.count("nika:") >= 2
     assert script_text.count("gleb:") >= 2
     assert script_text.count("artem:") >= 2
+
+
+def test_chunk_user_prompt_warns_against_forced_consumer_risk() -> None:
+    prompt = scriptwriter._build_chunk_user_prompt("### 1. Test", 1, 1)
+
+    assert "consumer/gadget/lifestyle" in prompt
+    assert "production-риск" in prompt
 
 
 def test_edit_dialogue_script_uses_editor_prompt(monkeypatch) -> None:
