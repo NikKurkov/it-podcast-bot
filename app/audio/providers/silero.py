@@ -1,51 +1,16 @@
 import asyncio
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
 from app.config.settings import settings
 from app.audio.providers.base import BaseTTSProvider
+from app.audio.pronunciation import apply_pronunciation_map
 
 logger = logging.getLogger(__name__)
 
 SILERO_RU_MODEL = "v4_ru"
 SUPPORTED_SILERO_SPEAKERS = {"aidar", "baya", "kseniya", "xenia", "eugene"}
-
-_ENGLISH_TTS_REPLACEMENTS = {
-    "ChatGPT": "чат-джи-пи-ти",
-    "OpenAI": "оупен-эй-ай",
-    "GitHub": "гитхаб",
-    "GitLab": "гитлаб",
-    "YouTube": "ютуб",
-    "Google": "гугл",
-    "Microsoft": "майкрософт",
-    "Apple": "эпл",
-    "Android": "андроид",
-    "iOS": "ай-о-эс",
-    "Claude": "клод",
-    "Discord": "дискорд",
-    "Docker": "докер",
-    "Kubernetes": "кубернетис",
-    "JavaScript": "джаваскрипт",
-    "TypeScript": "тайпскрипт",
-    "Python": "пайтон",
-    "Linux": "линукс",
-    "Windows": "виндоус",
-    "Full HD": "фул-эйч-ди",
-    "API": "эй-пи-ай",
-    "SDK": "эс-ди-кей",
-    "CLI": "си-эл-ай",
-    "CPU": "си-пи-ю",
-    "GPU": "джи-пи-ю",
-    "LLM": "эл-эл-эм",
-    "GPT": "джи-пи-ти",
-    "HTML": "эйч-ти-эм-эл",
-    "CSS": "си-эс-эс",
-    "SQL": "эс-кью-эл",
-    "JSON": "джейсон",
-    "YAML": "ямл",
-}
 
 
 class SileroTTSProvider(BaseTTSProvider):
@@ -126,15 +91,4 @@ class SileroTTSProvider(BaseTTSProvider):
 
 
 def prepare_silero_text(text: str) -> str:
-    result = text
-    for source, replacement in sorted(
-        _ENGLISH_TTS_REPLACEMENTS.items(),
-        key=lambda item: len(item[0]),
-        reverse=True,
-    ):
-        pattern = re.compile(
-            rf"(?<![A-Za-zА-Яа-яЁё]){re.escape(source)}(?![A-Za-zА-Яа-яЁё])",
-            flags=re.IGNORECASE,
-        )
-        result = pattern.sub(replacement, result)
-    return result
+    return apply_pronunciation_map(text)

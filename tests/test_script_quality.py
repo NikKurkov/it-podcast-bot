@@ -242,6 +242,26 @@ mark: Артём, зафиксируем вывод: проверьте зерк
     assert report["interruption_lines"] >= 1
 
 
+def test_build_script_quality_report_includes_text_lint() -> None:
+    report = build_script_quality_report(
+        """
+mark: Здесь важно проверить доступы.
+nika: Здесь важно проверить данные.
+gleb: Здесь важно проверить сборку.
+artem: Практический вывод простой: проверьте логи.
+mark: Практический вывод простой: проверьте лимиты.
+""",
+    )
+
+    lint = report["text_lint"]
+
+    assert lint["word_counts"]["важно"] >= 3
+    assert lint["construct_counts"]["здесь_важно"] == 3
+    assert lint["repeated_line_starts"]["здесь важно проверить"] == 3
+    assert "text_lint:repeated_construct:здесь_важно" in report["warnings"]
+    assert "text_lint:repeated_line_start:здесь важно проверить" in report["warnings"]
+
+
 def test_ensure_opening_and_rundown_adds_missing_intro() -> None:
     script = """
 gleb: GitHub снова проверяет терпение команд.
@@ -301,6 +321,22 @@ def test_ensure_opening_and_rundown_uses_short_topic_titles() -> None:
 
     assert "Discord массово сбоит по всему миру; РКН добрался до GitHub." in fixed
     assert "..." not in fixed
+
+
+def test_ensure_opening_and_rundown_compacts_long_topic_titles() -> None:
+    fixed = ensure_opening_and_rundown(
+        "gleb: GitHub снова проверяет терпение команд.",
+        topic_summaries=[
+            "OpenAI представила новые voice-модели для разработчиков с дополнительными режимами генерации и длинным описанием возможностей.",
+            "Discord массово сбоит по всему миру, сервис не запускается ни на одной платформе у пользователей.",
+            "CVE-2026-1234 в Kubernetes позволяет обойти ограничение доступа при редкой конфигурации кластера.",
+        ],
+    )
+
+    assert "OpenAI представила новые voice-модели" in fixed
+    assert "Discord массово сбоит по всему миру" in fixed
+    assert "CVE-2026-1234" in fixed
+    assert "длинным описанием возможностей" not in fixed
 
 
 def test_quality_gate_blocks_missing_opening() -> None:

@@ -2,6 +2,7 @@ from pathlib import Path
 import re
 
 from app.config.settings import settings
+from app.audio.dialogue import script_to_dialogue_lines
 from app.llm.client import create_llm_client
 from app.podcast.prompt_context import build_scriptwriter_context
 from app.podcast.script_validation import (
@@ -164,6 +165,12 @@ def edit_validated_dialogue_script(
             model=model,
             temperature=attempt_temperature,
         )
+        edited_script_text = rewrite_report_like_scenes(
+            edited_script_text,
+            source_draft=source_draft,
+            model=model,
+            temperature=max(0.12, attempt_temperature - 0.04),
+        )
         validation = validate_dialogue_script(edited_script_text)
         if not validation.has_blocking_issues and not validation.has_quality_retry_issues:
             return edited_script_text, validation
@@ -191,6 +198,86 @@ def edit_validated_dialogue_script(
         return script_text, original_validation
 
     return script_text, last_validation or original_validation
+
+
+def rewrite_report_like_scenes(
+    script_text: str,
+    source_draft: str,
+    model: str | None = None,
+    temperature: float = 0.18,
+) -> str:
+    spans = _find_report_like_scene_spans(script_text)
+    if not spans:
+        return script_text
+
+    lines = [line.strip() for line in script_text.splitlines() if line.strip()]
+    for start, end in reversed(spans):
+        segment = "\n".join(lines[start : end + 1])
+        rewritten = rewrite_script_draft(
+            _build_scene_rewrite_prompt(segment, source_draft),
+            model=model,
+            system_prompt=_load_dialogue_editor_system_prompt(),
+            temperature=temperature,
+            max_tokens=700,
+        )
+        cleaned = _clean_chunk_dialogue(rewritten)
+        if _scene_rewrite_is_usable(cleaned, expected_lines=end - start + 1):
+            lines[start : end + 1] = cleaned.splitlines()
+    return "\n".join(lines).strip()
+
+
+def _find_report_like_scene_spans(script_text: str, min_span: int = 4) -> list[tuple[int, int]]:
+    dialogue_lines = script_to_dialogue_lines(script_text)
+    if len(dialogue_lines) < min_span:
+        return []
+
+    spans = []
+    run_start: int | None = None
+    for index, line in enumerate(dialogue_lines):
+        if _is_report_like_line(line.text):
+            if run_start is None:
+                run_start = index
+        else:
+            if run_start is not None and index - run_start >= min_span:
+                spans.append((run_start, index - 1))
+            run_start = None
+    if run_start is not None and len(dialogue_lines) - run_start >= min_span:
+        spans.append((run_start, len(dialogue_lines) - 1))
+    return spans
+
+
+def _is_report_like_line(text: str) -> bool:
+    normalized = text.casefold().replace("ё", "е")
+    patterns = [
+        r"^здесь\s+важн",
+        r"^практическ\w+\s+(?:вывод|смысл|действие)",
+        r"^для\s+команд[ы]?\s+вывод",
+        r"^команд[ае]\s+нужн",
+        r"^следующ(?:ая|ий)\s+(?:тема|риск)",
+        r"^факт\s+",
+        r"^вывод\s*:",
+        r"^что\s+проверить\s*:",
+    ]
+    return any(re.search(pattern, normalized) for pattern in patterns)
+
+
+def _build_scene_rewrite_prompt(segment: str, source_draft: str) -> str:
+    return (
+        "Исходный черновик новостей. Не добавляй факты за его пределами:\n"
+        f"{source_draft.strip()}\n\n"
+        "Фрагмент сценария звучит как четыре доклада подряд. Перепиши только этот "
+        "фрагмент как живую мини-сцену: оставь те же факты, тех же персонажей, "
+        "формат mark:/nika:/gleb:/artem:, короткие реплики, без stage directions. "
+        "Добавь реакцию на предыдущую реплику, но не добавляй новых фактов.\n\n"
+        f"{segment.strip()}"
+    )
+
+
+def _scene_rewrite_is_usable(script_text: str, expected_lines: int) -> bool:
+    validation = validate_dialogue_script(script_text, require_all_characters=False)
+    if validation.has_structural_blocking_issues or validation.has_blocking_issues:
+        return False
+    return len(script_to_dialogue_lines(script_text)) == expected_lines
 
 
 def rewrite_validated_dialogue_script_draft(
