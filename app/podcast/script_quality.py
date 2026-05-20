@@ -31,6 +31,20 @@ _OUTRO_END_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 _CHARACTER_NAME_RE = r"(?:Марк|Ника|Глеб|Арт[её]м)"
+_TEXT_LINT_WORDS = {
+    "важно": r"\bважн\w*",
+    "риск": r"\bриск\w*",
+    "вывод": r"\bвывод\w*",
+    "проверить": r"\bпровер\w*",
+    "зафиксировать": r"\bзафикс\w*",
+}
+_TEXT_LINT_CONSTRUCTS = {
+    "здесь_важно": r"\bздесь\s+важн\w*",
+    "вывод_простой": r"\bвывод\s+прост\w*",
+    "практический_смысл": r"\bпрактическ\w+\s+смысл",
+    "практический_вывод": r"\bпрактическ\w+\s+вывод",
+    "команде_нужно": r"\bкоманд[ае]\s+нужн\w*",
+}
 
 
 @dataclass(frozen=True)
@@ -126,6 +140,7 @@ def build_script_quality_report(
     direct_address_lines = sum(1 for line in dialogue_lines if _DIRECT_ADDRESS_RE.search(line.text))
     interruption_lines = sum(1 for line in dialogue_lines if _INTERRUPTION_RE.search(line.text))
     repeated_openers = _repeated_openers(dialogue_lines)
+    text_lint = _build_text_lint_report(dialogue_lines)
     outro_present = _has_outro(dialogue_lines)
     outro_end_marker_present = _has_outro_end_marker(dialogue_lines)
 
@@ -143,6 +158,7 @@ def build_script_quality_report(
         "verdict_lines": emotion_counts.get("verdict", 0),
         "emotion_counts": dict(emotion_counts),
         "repeated_openers": repeated_openers,
+        "text_lint": text_lint,
         "validation_issues": validation_issues or [],
         "warnings": [],
     }
@@ -166,6 +182,8 @@ def build_script_quality_report(
     for opener, count in repeated_openers.items():
         if count > 1:
             report["warnings"].append(f"repeated_opener:{opener}")
+    for warning in text_lint["warnings"]:
+        report["warnings"].append(f"text_lint:{warning}")
     for speaker in get_character_keys():
         if speaker_counts.get(speaker, 0) < 2:
             report["warnings"].append(f"underused_{speaker}")
@@ -266,6 +284,7 @@ def _ensure_closing_outro(script_text: str, min_lines: int = 10) -> str:
 def _short_topic(text: str, max_chars: int = 90) -> str:
     clean_text = " ".join(text.replace("\n", " ").split()).strip(" -—")
     clean_text = _cut_topic_title(clean_text)
+    clean_text = _compact_topic_title(clean_text)
     clean_text = _drop_truncated_topic_tail(clean_text)
     if len(clean_text) <= max_chars:
         return clean_text
@@ -301,6 +320,66 @@ def _drop_truncated_topic_tail(text: str) -> str:
     while words and words[-1].casefold().replace("ё", "е").strip(".,:;!?—-") in fragments:
         words.pop()
     return " ".join(words).strip(" .,:;!?—-")
+
+
+def _compact_topic_title(text: str, max_words: int = 9) -> str:
+    text = _drop_weak_topic_prefix(text)
+    words = text.split()
+    if len(words) <= max_words:
+        return text.strip(" .,:;!?—-")
+
+    entity = _extract_topic_entity(text)
+    event = _extract_topic_event(text)
+    if entity and event and event.casefold().replace("ё", "е") not in entity.casefold().replace("ё", "е"):
+        compact = f"{entity} {event}"
+    else:
+        compact = " ".join(words[:max_words])
+    return compact.strip(" .,:;!?—-")
+
+
+def _drop_weak_topic_prefix(text: str) -> str:
+    return re.sub(
+        r"^(?:по\s+исходной\s+новости|важное|и\s+важное|к\s+важным\s+новостям)\s*[:—–-]?\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip(" .,:;!?—-")
+
+
+def _extract_topic_entity(text: str) -> str:
+    words = text.split()
+    entity_words = []
+    for word in words[:8]:
+        cleaned = word.strip("«»\"'()[]{}.,:;!?—-")
+        if not cleaned:
+            continue
+        if (
+            re.search(r"[A-ZА-ЯЁ0-9]", cleaned)
+            or "-" in cleaned
+            or cleaned.casefold() in {"api", "llm", "ios"}
+        ):
+            entity_words.append(cleaned)
+            continue
+        if entity_words:
+            break
+    if entity_words:
+        return " ".join(entity_words[:4])
+    return " ".join(words[:3]).strip(" .,:;!?—-")
+
+
+def _extract_topic_event(text: str) -> str:
+    tail = r"(?:\s+[A-Za-zА-Яа-яЁё0-9-]+){0,4}"
+    event_patterns = [
+        rf"\b(?:массово\s+)?(?:сбо\w+|не\s+запуска\w+|снизил\w*\s+доступност\w*)\b{tail}",
+        rf"\b(?:официально\s+)?(?:выпуст\w+|представ\w+|запуст\w+|анонсир\w+|готовит\w*)\b{tail}",
+        rf"\b(?:заблокир\w+|огранич\w+|зафиксир\w+)\b{tail}",
+        rf"\b(?:уязвимост\w+|CVE-\d[\w-]*)\b{tail}",
+    ]
+    for pattern in event_patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return match.group(0).strip(" .,:;!?—-")
+    return ""
 
 
 def _is_weak_topic_title(text: str) -> bool:
@@ -656,6 +735,54 @@ def _repeated_openers(dialogue_lines) -> dict[str, int]:
             if normalized.startswith(phrase):
                 counts[label] += 1
     return dict(counts)
+
+
+def _build_text_lint_report(dialogue_lines) -> dict:
+    full_text = " ".join(line.text for line in dialogue_lines).casefold().replace("ё", "е")
+    word_counts = {
+        label: len(re.findall(pattern, full_text, flags=re.IGNORECASE))
+        for label, pattern in _TEXT_LINT_WORDS.items()
+    }
+    construct_counts = {
+        label: len(re.findall(pattern, full_text, flags=re.IGNORECASE))
+        for label, pattern in _TEXT_LINT_CONSTRUCTS.items()
+    }
+    line_starts = Counter(
+        _line_start_signature(line.text)
+        for line in dialogue_lines
+        if _line_start_signature(line.text)
+    )
+    repeated_line_starts = {
+        start: count
+        for start, count in sorted(line_starts.items())
+        if count >= 2
+    }
+
+    warnings = []
+    lines_count = max(len(dialogue_lines), 1)
+    for label, count in word_counts.items():
+        if count >= max(4, round(lines_count * 0.35)):
+            warnings.append(f"overused_word:{label}")
+    for label, count in construct_counts.items():
+        if count >= 2:
+            warnings.append(f"repeated_construct:{label}")
+    for start, count in repeated_line_starts.items():
+        if count >= 3:
+            warnings.append(f"repeated_line_start:{start}")
+
+    return {
+        "word_counts": word_counts,
+        "construct_counts": construct_counts,
+        "repeated_line_starts": repeated_line_starts,
+        "warnings": warnings,
+    }
+
+
+def _line_start_signature(text: str, words_count: int = 3) -> str:
+    words = re.findall(r"[A-Za-zА-Яа-яЁё0-9-]+", text.casefold().replace("ё", "е"))
+    if len(words) < words_count:
+        return ""
+    return " ".join(words[:words_count])
 
 
 def _has_opening(first_text: str) -> bool:

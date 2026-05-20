@@ -416,6 +416,37 @@ def test_edit_dialogue_script_uses_editor_prompt(monkeypatch) -> None:
     assert "mark: Валидный сценарий." in kwargs["messages"][1]["content"]
 
 
+def test_rewrite_report_like_scenes_rewrites_only_stiff_span(monkeypatch) -> None:
+    calls = []
+
+    def fake_rewrite(prompt, *args, **kwargs):
+        calls.append(prompt)
+        return """
+mark: Discord лежит, и это уже факт, а не ощущение.
+nika: Тогда первый вопрос простой: где команда общается, если основной чат недоступен?
+gleb: Люблю аварии, которые сразу проверяют план коммуникации.
+artem: Проверьте резервный канал и порядок эскалации до следующего сбоя.
+"""
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", fake_rewrite)
+
+    script_text = """
+mark: Здесь важно проверить доступность Discord.
+nika: Практический вывод: проверьте резервный канал.
+gleb: Команде нужно зафиксировать порядок эскалации.
+artem: Что проверить: кто отвечает за коммуникацию.
+mark: На этом всё, это были главные новости на сегодня.
+"""
+
+    rewritten = scriptwriter.rewrite_report_like_scenes(script_text, source_draft="Discord сбоит")
+
+    assert len(calls) == 1
+    assert "четыре доклада подряд" in calls[0]
+    assert "где команда общается" in rewritten
+    assert "На этом всё" in rewritten
+    assert "Здесь важно проверить" not in rewritten
+
+
 def test_edit_validated_dialogue_script_accepts_valid_editor_output(monkeypatch) -> None:
     original_script = """
 mark: Добрый день, сегодня девятое мая, и вы слушаете НикКаст с обзором главных новостей в мире айти. Разбираем сбой платформы и риск для команд.
