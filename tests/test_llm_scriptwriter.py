@@ -291,8 +291,8 @@ Fact lock:
     assert validation.has_structural_blocking_issues is False
     consumer_scene = script_text.split("mark: На этом всё", 1)[0]
 
-    assert "production-риск" in consumer_scene
-    assert "технических действий из новости не следует" in consumer_scene
+    assert "В инженерную проблему это не превращаем" in consumer_scene
+    assert "без чеклиста для разработки" in consumer_scene
     assert "резервный план" not in consumer_scene
     assert "доступ" not in consumer_scene.casefold()
 
@@ -323,7 +323,7 @@ Fact lock:
 
     assert "Finally" not in consumer_scene
     assert "Full HD-монитор" in consumer_scene
-    assert "технических действий из новости не следует" in consumer_scene
+    assert "без чеклиста для разработки" in consumer_scene
     assert "резервный план" not in consumer_scene
     assert "доступ" not in consumer_scene.casefold()
 
@@ -380,11 +380,11 @@ Fact lock:
     script_text = scriptwriter._build_deterministic_dialogue_from_blocks(blocks)
 
     assert "По исходной новости" not in script_text
-    assert "Первая зацепка" in script_text
-    assert "А вот следующая тема" in script_text
-    assert "Дальше история с подвохом" in script_text
+    assert "Открываем конкретикой" in script_text
+    assert "Следом история про практику" in script_text
+    assert "Теперь к новости с подвохом" in script_text
     assert "микрофон" in script_text or "клавиатура" in script_text
-    assert "Финальный вывод" in script_text
+    assert "После выпуска проверьте" in script_text
     assert script_text.count("mark:") >= 2
     assert script_text.count("nika:") >= 2
     assert script_text.count("gleb:") >= 2

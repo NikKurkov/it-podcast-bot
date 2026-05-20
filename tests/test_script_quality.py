@@ -256,9 +256,38 @@ artem: Проверьте зеркала и план отката.
 
     assert "Добрый день" in fixed
     assert settings.podcast_title in fixed
+    assert "Разбираем, где в этих историях технический риск, а где просто шум" not in fixed
     assert "В выпуске:" in fixed
     assert report["opening_present"] is True
     assert report["rundown_present"] is True
+
+
+def test_postprocess_dialogue_script_fixes_first_person_gender_agreement() -> None:
+    result = postprocess_dialogue_script(
+        """
+gleb: Я бы перевела это проще: GitHub опять проверяет рабочий процесс.
+artem: Я бы спросила про конкретный механизм отказа.
+nika: Я бы перевел это на человеческий язык.
+""",
+    )
+
+    assert "gleb: Я бы перевёл это проще" in result.script_text
+    assert "artem: Я бы спросил" in result.script_text
+    assert "nika: Я бы перевела" in result.script_text
+
+
+def test_postprocess_dialogue_script_tightens_editorial_labels() -> None:
+    result = postprocess_dialogue_script(
+        """
+artem: Здесь важно проверить токены доступа до релиза.
+mark: Для команды вывод простой: держите факты рядом с планом действий.
+nika: Практический шаг простой: сравните обещание с фактическим ограничением.
+""",
+    )
+
+    assert "artem: Проверьте токены доступа до релиза." in result.script_text
+    assert "mark: Для команды: держите факты рядом" in result.script_text
+    assert "Практический шаг простой" not in result.script_text
 
 
 def test_ensure_opening_and_rundown_uses_short_topic_titles() -> None:

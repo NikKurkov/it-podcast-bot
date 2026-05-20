@@ -77,12 +77,7 @@ def ensure_opening_and_rundown(
     lines = [line.strip() for line in script_text.splitlines() if line.strip()]
     prefix = []
     if not report["opening_present"]:
-        prefix.append(
-            "mark: "
-            f"Добрый день, сегодня {format_russian_episode_date(episode_date)}, "
-            f"и вы слушаете {settings.podcast_title} с обзором главных новостей в мире айти. "
-            "Разбираем, где в этих историях технический риск, а где просто шум.",
-        )
+        prefix.append(f"mark: {_build_opening_text(topic_summaries or [], episode_date)}")
     if not report["rundown_present"]:
         rundown = _build_rundown_text(topic_summaries or [])
         prefix.append(f"nika: {rundown}")
@@ -234,6 +229,22 @@ def _build_rundown_text(topic_summaries: list[str]) -> str:
     )
 
 
+def _build_opening_text(topic_summaries: list[str], episode_date: datetime | None) -> str:
+    variants = [
+        "Сегодня в выпуске смотрим, какие новости действительно меняют работу команд.",
+        "Что новенького: проверяем факты, последствия и то, что важно для айти-команд.",
+        "Итак, сегодня новости такие: отделяем подтверждённые факты от громких формулировок.",
+        "Пройдёмся по главным сигналам дня и посмотрим, где есть практические последствия.",
+    ]
+    seed = sum(ord(char) for summary in topic_summaries for char in summary)
+    suffix = variants[seed % len(variants)]
+    return (
+        f"Добрый день, сегодня {format_russian_episode_date(episode_date)}, "
+        f"и вы слушаете {settings.podcast_title} с обзором главных новостей в мире айти. "
+        f"{suffix}"
+    )
+
+
 def _ensure_closing_outro(script_text: str, min_lines: int = 10) -> str:
     dialogue_lines = script_to_dialogue_lines(script_text)
     if len(dialogue_lines) < min_lines:
@@ -316,6 +327,8 @@ def _normalize_dialogue_line(line: str, *, phrase_counts: Counter[str] | None = 
     text = _normalize_character_names(text)
     text = _normalize_weak_transition_title(text)
     text = _remove_self_address(text, speaker_key)
+    text = _normalize_speaker_gender_agreement(text, speaker_key)
+    text = _tighten_editorial_labels(text)
     if phrase_counts is None:
         phrase_counts = Counter()
     text = _vary_mechanical_phrases(text, phrase_counts)
@@ -360,6 +373,56 @@ def _normalize_weak_transition_title(text: str) -> str:
         text,
         flags=re.IGNORECASE,
     ).strip()
+
+
+def _normalize_speaker_gender_agreement(text: str, speaker_key: str) -> str:
+    if speaker_key == "nika":
+        replacements = {
+            r"\bя\s+бы\s+перев[её]л\b": "я бы перевела",
+            r"\bя\s+бы\s+сказал\b": "я бы сказала",
+            r"\bя\s+бы\s+спросил\b": "я бы спросила",
+            r"\bя\s+бы\s+добавил\b": "я бы добавила",
+            r"\bя\s+бы\s+проверил\b": "я бы проверила",
+            r"\bя\s+бы\s+посмотрел\b": "я бы посмотрела",
+            r"\bя\s+спросил\b": "я спросила",
+            r"\bя\s+сказал\b": "я сказала",
+            r"\bя\s+добавил\b": "я добавила",
+        }
+    elif speaker_key in {"mark", "gleb", "artem"}:
+        replacements = {
+            r"\bя\s+бы\s+перевела\b": "я бы перевёл",
+            r"\bя\s+бы\s+сказала\b": "я бы сказал",
+            r"\bя\s+бы\s+спросила\b": "я бы спросил",
+            r"\bя\s+бы\s+добавила\b": "я бы добавил",
+            r"\bя\s+бы\s+проверила\b": "я бы проверил",
+            r"\bя\s+бы\s+посмотрела\b": "я бы посмотрел",
+            r"\bя\s+спросила\b": "я спросил",
+            r"\bя\s+сказала\b": "я сказал",
+            r"\bя\s+добавила\b": "я добавил",
+        }
+    else:
+        return text
+
+    for pattern, replacement in replacements.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
+
+
+def _tighten_editorial_labels(text: str) -> str:
+    replacements = [
+        (r"^здесь\s+важно\s+проверить\b", "Проверьте"),
+        (r"^здесь\s+важно\s+зафиксировать\b", "Зафиксируйте"),
+        (r"^здесь\s+важно\s+сравнить\b", "Сравните"),
+        (r"^здесь\s+важно\s+вынести\b", "Вынесите"),
+        (r"^здесь\s+важно\s+заложить\b", "Заложите"),
+        (r"^для\s+команды\s+вывод\s+простой\s*:\s*", "Для команды: "),
+        (r"^вывод\s+простой\s*:\s*", ""),
+        (r"^практический\s+шаг\s+простой\s*:\s*", ""),
+        (r"^практический\s+смысл\s+такой\s*:\s*", ""),
+    ]
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return re.sub(r"\s{2,}", " ", text).strip()
 
 
 def _remove_self_address(text: str, speaker_key: str) -> str:

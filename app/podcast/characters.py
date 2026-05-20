@@ -5,6 +5,7 @@ from dataclasses import dataclass
 class CharacterProfile:
     key: str
     name: str
+    gender: str
     role: str
     short_description: str
     personality: str
@@ -21,6 +22,7 @@ CHARACTER_PROFILES: dict[str, CharacterProfile] = {
     "mark": CharacterProfile(
         key="mark",
         name="Марк",
+        gender="мужской",
         role="Следователь / ведущий-аналитик",
         short_description=(
             "Ведёт выпуск как расследование, собирает факты, задаёт структуру "
@@ -49,6 +51,7 @@ CHARACTER_PROFILES: dict[str, CharacterProfile] = {
     "gleb": CharacterProfile(
         key="gleb",
         name="Глеб",
+        gender="мужской",
         role="Старый Хакер",
         short_description=(
             "Опытный, циничный и саркастичный инженер. Помнит, что это уже было, "
@@ -76,6 +79,7 @@ CHARACTER_PROFILES: dict[str, CharacterProfile] = {
     "nika": CharacterProfile(
         key="nika",
         name="Ника",
+        gender="женский",
         role="Деврел / объясняющая ведущая",
         short_description=(
             "Живая, остроумная и дружелюбная ведущая. Объясняет сложное человеческим "
@@ -104,6 +108,7 @@ CHARACTER_PROFILES: dict[str, CharacterProfile] = {
     "artem": CharacterProfile(
         key="artem",
         name="Артём",
+        gender="мужской",
         role="Архитектор",
         short_description=(
             "Системный инженер. Видит архитектуру, инфраструктуру, безопасность, "
@@ -174,6 +179,7 @@ def format_character_profiles_for_prompt() -> str:
                 [
                     f"{profile.name} — {profile.role}.",
                     f"Ключ персонажа: {profile.key}",
+                    f"Грамматический род в репликах от первого лица: {profile.gender}.",
                     f"Суть: {profile.short_description}",
                     f"Характер: {profile.personality}",
                     f"Стиль: {profile.speech_style}",
@@ -187,6 +193,12 @@ def format_character_profiles_for_prompt() -> str:
                         "Живой диалог: персонаж может обращаться к другим ведущим "
                         "по именам, перебивать коротким уточнением и реагировать "
                         "на предыдущую реплику, если это помогает теме."
+                    ),
+                    (
+                        "Согласование: если персонаж говорит о себе в прошедшем времени "
+                        "или условном наклонении, используй его грамматический род. "
+                        "Марк, Глеб и Артём говорят «я бы перевёл», «я спросил»; "
+                        "Ника говорит «я бы перевела», «я спросила»."
                     ),
                 ],
             ),
