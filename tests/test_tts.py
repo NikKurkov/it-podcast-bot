@@ -1,4 +1,5 @@
 from app.audio.tts import markdown_to_speech_text
+from app.audio.providers.silero import prepare_silero_text
 
 
 def test_markdown_to_speech_text_removes_markdown_and_links() -> None:
@@ -18,3 +19,13 @@ def test_markdown_to_speech_text_removes_markdown_and_links() -> None:
     assert "https://" not in text
     assert "label" in text
     assert "---" not in text
+
+
+def test_prepare_silero_text_transcribes_common_english_terms() -> None:
+    text = prepare_silero_text("OpenAI показала API для GitHub, Full HD и JSON.")
+
+    assert "оупен-эй-ай" in text
+    assert "эй-пи-ай" in text
+    assert "гитхаб" in text
+    assert "фул-эйч-ди" in text
+    assert "джейсон" in text

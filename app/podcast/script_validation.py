@@ -596,38 +596,38 @@ def _rewrite_generic_filler_line(line: str, team_should_replacement_index: int) 
     text = match.group("text").strip()
     text = re.sub(
         r"^сегодня\s+мы\s+поговорим\s+о\s+",
-        "Разбираем ",
+        "Сегодня смотрим на ",
         text,
         flags=re.IGNORECASE,
     )
     text = re.sub(
         r"^переходим\s+к\s+следующей\s+новости\s+[—-]\s*",
-        "Следующий риск - ",
+        "Следующая тема: ",
         text,
         flags=re.IGNORECASE,
     )
     text = re.sub(
         r"^давайте\s+(?:перейд[её]м|переходим)\s+к\s+следующей\s+новости\s+о\s+",
-        "Следующий риск - ",
+        "Теперь к теме про ",
         text,
         flags=re.IGNORECASE,
     )
     text = re.sub(
         r"^давайте\s+(?:перейд[её]м|переходим)\s+к\s+следующей\s+новости\.?\s*",
-        "Следующий риск - ",
+        "Следующая тема: ",
         text,
         flags=re.IGNORECASE,
     )
     text = re.sub(
         r"^давайте\s+теперь\s+обсудим\s+новость\s+про\s+",
-        "Следующий риск - ",
+        "Теперь к теме про ",
         text,
         flags=re.IGNORECASE,
     )
     text = re.sub(
         r"^интересно,\s+как\s+это\s+(?:влияет\s+на|поможет)\s+обычн(?:ого|ому)\s+"
         r"разработчик(?:а|у)\?\s*",
-        "Практический вопрос - ",
+        "Проверка для команды: ",
         text,
         flags=re.IGNORECASE,
     )

@@ -77,12 +77,7 @@ def ensure_opening_and_rundown(
     lines = [line.strip() for line in script_text.splitlines() if line.strip()]
     prefix = []
     if not report["opening_present"]:
-        prefix.append(
-            "mark: "
-            f"Добрый день, сегодня {format_russian_episode_date(episode_date)}, "
-            f"и вы слушаете {settings.podcast_title} с обзором главных новостей в мире айти. "
-            "Разбираем, где в этих историях технический риск, а где просто шум.",
-        )
+        prefix.append(f"mark: {_build_opening_text(topic_summaries or [], episode_date)}")
     if not report["rundown_present"]:
         rundown = _build_rundown_text(topic_summaries or [])
         prefix.append(f"nika: {rundown}")
@@ -199,13 +194,26 @@ def _normalize_editorial_text(script_text: str) -> str:
         (r"\bда,\s+но\s+это\s+уже\s+было\b", "это уже было"),
         (r"\bсовершенно\s+верно\.\s*", ""),
         (r"\bабсолютно\s+верно\.\s*", ""),
+        (
+            r"анонс\s+звучит\s+бодро,\s+но\s+его\s+еще\s+надо\s+проверять:\s*"
+            r"проверять\s+прид[её]тся\s+реальные\s+ограничения",
+            "анонс звучит бодро, но реальные ограничения всё равно придётся проверить",
+        ),
+        (
+            r"витрина\s+красивая,\s+а\s+ограничения\s+вс[её]\s+равно\s+придется\s+смотреть\s+руками:\s*"
+            r"проверять\s+прид[её]тся\s+реальные\s+ограничения",
+            "витрина красивая, а ограничения всё равно придётся проверять руками",
+        ),
         (r"\s+([,.!?;:])", r"\1"),
     ]
     result = script_text
     for pattern, replacement in replacements:
         result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
     phrase_counts: Counter[str] = Counter()
+    sentence_counts: Counter[str] = Counter()
     lines = [_normalize_dialogue_line(line, phrase_counts=phrase_counts) for line in result.splitlines()]
+    lines = [_vary_repeated_sentences(line, sentence_counts=sentence_counts) for line in lines]
+    lines = _remove_weak_transition_lines(lines)
     lines = _remove_duplicate_opening_lines([line for line in lines if line])
     lines = _thin_excess_direct_addresses(lines)
     return "\n".join(lines).strip()
@@ -218,6 +226,22 @@ def _build_rundown_text(topic_summaries: list[str]) -> str:
     return (
         "В выпуске: самые заметные IT-события дня, риски для команд, "
         "инструменты и решения, которые стоит проверить."
+    )
+
+
+def _build_opening_text(topic_summaries: list[str], episode_date: datetime | None) -> str:
+    variants = [
+        "Сегодня в выпуске смотрим, какие новости действительно меняют работу команд.",
+        "Что новенького: проверяем факты, последствия и то, что важно для айти-команд.",
+        "Итак, сегодня новости такие: отделяем подтверждённые факты от громких формулировок.",
+        "Пройдёмся по главным сигналам дня и посмотрим, где есть практические последствия.",
+    ]
+    seed = sum(ord(char) for summary in topic_summaries for char in summary)
+    suffix = variants[seed % len(variants)]
+    return (
+        f"Добрый день, сегодня {format_russian_episode_date(episode_date)}, "
+        f"и вы слушаете {settings.podcast_title} с обзором главных новостей в мире айти. "
+        f"{suffix}"
     )
 
 
@@ -252,13 +276,23 @@ def _cut_topic_title(text: str) -> str:
     text = re.split(r"\s+(?:Старт продаж|Продажи)\b", text, maxsplit=1, flags=re.IGNORECASE)[0]
     match = re.search(r"\s+[—–-]\s+|[.:?!…]+(?:\s+|$)", text)
     if match:
-        return text[: match.start()].strip(" .,:;!?—-")
+        title = text[: match.start()].strip(" .,:;!?—-")
+        tail = text[match.end() :].strip(" .,:;!?—-")
+        if _is_weak_topic_title(title) and tail:
+            return _cut_topic_title(tail)
+        return title
     return text.strip(" .,:;!?—-")
 
 
 def _drop_truncated_topic_tail(text: str) -> str:
     fragments = {
         "заплан",
+        "которая",
+        "которое",
+        "который",
+        "которые",
+        "создает",
+        "создаёт",
         "экс",
         "официальных",
         "производител",
@@ -267,6 +301,19 @@ def _drop_truncated_topic_tail(text: str) -> str:
     while words and words[-1].casefold().replace("ё", "е").strip(".,:;!?—-") in fragments:
         words.pop()
     return " ".join(words).strip(" .,:;!?—-")
+
+
+def _is_weak_topic_title(text: str) -> bool:
+    normalized = text.casefold().replace("ё", "е").strip(" .,:;!?—-")
+    return normalized in {
+        "finally",
+        "finally...",
+        "факт дня",
+        "важно",
+        "и важное",
+        "и к важным новостям",
+        "срочно",
+    }
 
 
 def _normalize_dialogue_line(line: str, *, phrase_counts: Counter[str] | None = None) -> str:
@@ -278,7 +325,10 @@ def _normalize_dialogue_line(line: str, *, phrase_counts: Counter[str] | None = 
     speaker_key = speaker.casefold().replace("ё", "е")
     text = match.group("text").strip()
     text = _normalize_character_names(text)
+    text = _normalize_weak_transition_title(text)
     text = _remove_self_address(text, speaker_key)
+    text = _normalize_speaker_gender_agreement(text, speaker_key)
+    text = _tighten_editorial_labels(text)
     if phrase_counts is None:
         phrase_counts = Counter()
     text = _vary_mechanical_phrases(text, phrase_counts)
@@ -290,7 +340,11 @@ def _normalize_dialogue_line(line: str, *, phrase_counts: Counter[str] | None = 
 
 def _normalize_rundown_text(text: str) -> str:
     _, _, payload = text.partition(":")
-    topics = [_short_topic(part) for part in payload.split(";") if part.strip()]
+    topics = [
+        topic
+        for topic in (_short_topic(part) for part in payload.split(";") if part.strip())
+        if topic and not _is_weak_topic_title(topic)
+    ]
     if not topics:
         return text
     return "В выпуске: " + "; ".join(topics) + "."
@@ -306,6 +360,69 @@ def _normalize_character_names(text: str) -> str:
     for pattern, replacement in replacements.items():
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
     return text
+
+
+def _normalize_weak_transition_title(text: str) -> str:
+    transition_re = (
+        r"(?P<prefix>^(?:первая\s+зацепка|а\s+вот\s+следующая\s+тема|"
+        r"дальше\s+история\s+с\s+подвохом|переключаемся\s+на\s+практический\s+риск)\s*:\s*)"
+    )
+    return re.sub(
+        transition_re + r"(?:finally|факт\s+дня)\s*[.:!?…—–-]+\s*(?P<tail>.+)$",
+        lambda match: f"{match.group('prefix')}{match.group('tail')}",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+
+
+def _normalize_speaker_gender_agreement(text: str, speaker_key: str) -> str:
+    if speaker_key == "nika":
+        replacements = {
+            r"\bя\s+бы\s+перев[её]л\b": "я бы перевела",
+            r"\bя\s+бы\s+сказал\b": "я бы сказала",
+            r"\bя\s+бы\s+спросил\b": "я бы спросила",
+            r"\bя\s+бы\s+добавил\b": "я бы добавила",
+            r"\bя\s+бы\s+проверил\b": "я бы проверила",
+            r"\bя\s+бы\s+посмотрел\b": "я бы посмотрела",
+            r"\bя\s+спросил\b": "я спросила",
+            r"\bя\s+сказал\b": "я сказала",
+            r"\bя\s+добавил\b": "я добавила",
+        }
+    elif speaker_key in {"mark", "gleb", "artem"}:
+        replacements = {
+            r"\bя\s+бы\s+перевела\b": "я бы перевёл",
+            r"\bя\s+бы\s+сказала\b": "я бы сказал",
+            r"\bя\s+бы\s+спросила\b": "я бы спросил",
+            r"\bя\s+бы\s+добавила\b": "я бы добавил",
+            r"\bя\s+бы\s+проверила\b": "я бы проверил",
+            r"\bя\s+бы\s+посмотрела\b": "я бы посмотрел",
+            r"\bя\s+спросила\b": "я спросил",
+            r"\bя\s+сказала\b": "я сказал",
+            r"\bя\s+добавила\b": "я добавил",
+        }
+    else:
+        return text
+
+    for pattern, replacement in replacements.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
+
+
+def _tighten_editorial_labels(text: str) -> str:
+    replacements = [
+        (r"^здесь\s+важно\s+проверить\b", "Проверьте"),
+        (r"^здесь\s+важно\s+зафиксировать\b", "Зафиксируйте"),
+        (r"^здесь\s+важно\s+сравнить\b", "Сравните"),
+        (r"^здесь\s+важно\s+вынести\b", "Вынесите"),
+        (r"^здесь\s+важно\s+заложить\b", "Заложите"),
+        (r"^для\s+команды\s+вывод\s+простой\s*:\s*", "Для команды: "),
+        (r"^вывод\s+простой\s*:\s*", ""),
+        (r"^практический\s+шаг\s+простой\s*:\s*", ""),
+        (r"^практический\s+смысл\s+такой\s*:\s*", ""),
+    ]
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return re.sub(r"\s{2,}", " ", text).strip()
 
 
 def _remove_self_address(text: str, speaker_key: str) -> str:
@@ -342,6 +459,24 @@ def _vary_mechanical_phrases(text: str, phrase_counts: Counter[str]) -> str:
             "для тех, кто это поддерживает",
             "для продуктовых команд",
         ],
+        "практический смысл простой": [
+            "если совсем коротко",
+            "рабочий смысл такой",
+            "главная проверка здесь простая",
+        ],
+        "тут не хайп важен": [
+            "здесь важен не заголовок",
+            "я бы смотрел не на шум",
+            "главный вопрос не в эффектности",
+        ],
+        "красивый анонс сам по себе ничего не гарантирует": [
+            "анонс звучит бодро, но его еще надо проверять",
+            "витрина красивая, а ограничения всё равно придется смотреть руками",
+        ],
+        "я бы не радовался раньше времени": [
+            "я бы сначала дождался практики",
+            "праздновать рано",
+        ],
     }
     for phrase, options in variants.items():
         pattern = re.compile(re.escape(phrase), re.IGNORECASE)
@@ -351,6 +486,38 @@ def _vary_mechanical_phrases(text: str, phrase_counts: Counter[str]) -> str:
             text = pattern.sub(replacement, text, count=1)
     text = re.sub(r"\bчто\s+значит\s+", "", text, flags=re.IGNORECASE)
     return re.sub(r"\s{2,}", " ", text).strip()
+
+
+def _vary_repeated_sentences(line: str, *, sentence_counts: Counter[str]) -> str:
+    match = re.match(r"^(?P<speaker>[\wА-Яа-яЁё-]+)\s*[:：]\s*(?P<text>.*)$", line)
+    if not match:
+        return line
+    speaker = match.group("speaker")
+    text = match.group("text").strip()
+    replacements = {
+        "Тут не хайп важен, а то, насколько команда понимает, где у неё точка отказа.": [
+            "Здесь важнее понять, где у команды слабое место и кто его чинит.",
+            "Я бы проверил не заголовок, а реальную точку отказа.",
+        ],
+        "Практический смысл простой: меньше догадок, больше проверяемых фактов и наблюдаемости.": [
+            "Практически это про наблюдаемость, факты и меньше решений на ощущениях.",
+            "Вывод простой: сначала данные и логи, потом уже красивые версии.",
+        ],
+        "Зафиксируйте, что меняется для сборки, данных, доступов или пользовательского сценария.": [
+            "Запишите, какие доступы, данные и сценарии реально задевает эта новость.",
+            "Проверьте, что именно меняется в сборке, правах и пользовательском пути.",
+        ],
+    }
+    for sentence, options in replacements.items():
+        if sentence not in text:
+            continue
+        count = sentence_counts[sentence]
+        sentence_counts[sentence] += 1
+        if count == 0:
+            continue
+        replacement = options[(count - 1) % len(options)]
+        text = text.replace(sentence, replacement, 1)
+    return f"{speaker}: {text}" if text else ""
 
 
 def _capitalize_sentence_starts(text: str) -> str:
@@ -376,6 +543,22 @@ def _remove_duplicate_opening_lines(lines: list[str]) -> list[str]:
             continue
         if has_opening:
             opening_seen = True
+        result.append(line)
+    return result
+
+
+def _remove_weak_transition_lines(lines: list[str]) -> list[str]:
+    result = []
+    weak_transition_re = re.compile(
+        r"^[\wА-Яа-яЁё-]+\s*[:：]\s*"
+        r"(?:первая\s+зацепка|а\s+вот\s+следующая\s+тема|дальше\s+история\s+с\s+подвохом|"
+        r"переключаемся\s+на\s+практический\s+риск)\s*:\s*"
+        r"(?:finally|факт\s+дня)\s*[.!?…]*\s*$",
+        re.IGNORECASE,
+    )
+    for line in lines:
+        if weak_transition_re.match(line):
+            continue
         result.append(line)
     return result
 

@@ -528,7 +528,7 @@ artem: Проверьте коммуникационные fallback-сценар
     repaired = repair_dialogue_script_text(script_text)
 
     assert "Переходим к следующей новости" not in repaired
-    assert "Следующий риск - Discord" in repaired
+    assert "Следующая тема: Discord" in repaired
 
 
 def test_repair_dialogue_script_text_removes_markdown_separator() -> None:
