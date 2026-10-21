@@ -24,7 +24,9 @@ def test_export_script_markdown(tmp_path) -> None:
             },
         )
         assert post is not None
-        update_editorial_state(session, [post.id], selected=True, category="top news", editor_note="Open with this")
+        update_editorial_state(
+            session, [post.id], selected=True, category="top news", editor_note="Open with this"
+        )
         posts = get_selected_posts(session)
 
     output_path = tmp_path / "script.md"
@@ -35,12 +37,13 @@ def test_export_script_markdown(tmp_path) -> None:
     assert "Generated at:" not in content
     assert "## Intro" not in content
     assert "## Outro" not in content
-    assert "## top news" in content
+    assert "### 1." in content
     assert "Editor note: Open with this" not in content
     assert "черновик" not in content
-    assert "Fact lock:" in content
-    assert "- Main claim: Selected story" in content
-    assert "Do not replace the mechanism" in content
+    assert "Fact lock:" not in content
+    assert "Source publication date (not event date): 2026-05-06T00:00:00+00:00" in content
+    assert "Original source" in content
+    assert "Selected story" in content
     assert "Selected story" in content
 
 

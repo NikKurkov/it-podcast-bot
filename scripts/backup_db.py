@@ -1,4 +1,5 @@
-import shutil
+from contextlib import closing
+import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -17,9 +18,11 @@ def main() -> None:
 
     backup_dir = Path("data/backups")
     backup_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backup_path = backup_dir / f"{db_path.stem}_{timestamp}{db_path.suffix}"
-    shutil.copy2(db_path, backup_path)
+    with closing(sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)) as source:
+        with closing(sqlite3.connect(backup_path)) as backup:
+            source.backup(backup)
     print(f"Created backup: {backup_path}")
 
 

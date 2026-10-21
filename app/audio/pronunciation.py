@@ -3,6 +3,13 @@ from functools import lru_cache
 from pathlib import Path
 
 DEFAULT_PRONUNCIATION_PATH = Path("config/pronunciation_ru.txt")
+_LETTER_NAMES = dict(
+    zip(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        "эй би си ди и эф джи эйч ай джей кей эл эм эн оу пи кью ар эс ти ю ви дабл-ю экс уай зэд".split(),
+    )
+)
+_ACRONYM_RE = re.compile(r"(?<![A-Za-zА-Яа-яЁё])[A-Z]{2,}(?![A-Za-zА-Яа-яЁё])")
 
 
 @lru_cache(maxsize=8)
@@ -38,4 +45,15 @@ def apply_pronunciation_map(
             flags=re.IGNORECASE,
         )
         result = pattern.sub(replacement, result)
-    return result
+    explicit = {key.casefold() for key in entries}
+
+    def spell(match: re.Match) -> str:
+        token = match.group()
+        # A pronounceable uppercase word may be a name, not an initialism.
+        if token.casefold() in explicit or any(vowel in token for vowel in "AEIOUY"):
+            return token
+        before = " " if match.start() and result[match.start() - 1].isdigit() else ""
+        after = " " if match.end() < len(result) and result[match.end()].isdigit() else ""
+        return before + "-".join(_LETTER_NAMES[letter] for letter in token) + after
+
+    return _ACRONYM_RE.sub(spell, result)

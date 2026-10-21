@@ -1,4 +1,6 @@
 import re
+import unicodedata
+from dataclasses import replace
 
 from app.audio.models import DialogueLine
 from app.audio.voice_direction import apply_voice_direction
@@ -9,6 +11,7 @@ _SPEAKER_RE = re.compile(r"^(?P<speaker>[\wА-Яа-яЁё-]+)\s*[:：]\s*(?P<tex
 _ROUND_ROBIN_SPEAKERS = get_character_keys()
 _MAX_LINE_CHARS = 450
 _MAX_TTS_LINE_CHARS = 170
+_MIN_TTS_CHUNK_CHARS = 45
 _RU_MONTHS_FOR_TTS = {
     "января",
     "февраля",
@@ -122,18 +125,24 @@ def _flush_dialogue_line(
         return
 
     voice_config = get_voice_config(speaker)
-    chunks = _split_long_text(text, max_chars=_MAX_TTS_LINE_CHARS)
+    line = apply_voice_direction(
+        speaker=speaker, text=text, base_pause_after_ms=voice_config.get("pause_after_ms", 500)
+    )
+    lines.extend(split_speech_line(line))
+
+
+def split_speech_line(line: DialogueLine) -> list[DialogueLine]:
+    chunks = _split_long_text(line.text, max_chars=_MAX_TTS_LINE_CHARS)
+    result = []
     for index, chunk in enumerate(chunks):
-        pause_after_ms = voice_config.get("pause_after_ms", 500)
+        pause_after_ms = line.pause_after_ms
         if index < len(chunks) - 1:
-            pause_after_ms = min(pause_after_ms, 250)
-        lines.append(
-            apply_voice_direction(
-                speaker=speaker,
-                text=chunk,
-                base_pause_after_ms=pause_after_ms,
-            ),
-        )
+            # A provider-size boundary is not a new speaker turn.
+            pause_after_ms = min(
+                pause_after_ms, 160 if chunk.endswith((".", "?", "!", "…")) else 60
+            )
+        result.append(replace(line, text=chunk, pause_after_ms=pause_after_ms))
+    return result
 
 
 def _markdown_to_paragraphs(markdown: str) -> list[str]:
@@ -175,8 +184,8 @@ def _clean_speech_text(text: str) -> str:
     text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
     text = re.sub(r"\[(.*?)\]\((.*?)\)", r"\1", text)
     text = re.sub(r"https?://\S+", "", text)
-    text = re.sub(r"[@#]\S+", "", text)
-    text = re.sub(r"[^\w\sА-Яа-яЁё.,!?;:()«»\"'\\-]", " ", text)
+    text = re.sub(r"(?<![\w+#])[@#]\w+", "", text)
+    text = "".join(char for char in text if unicodedata.category(char) not in {"Cc", "Cf", "So"})
     text = _normalize_russian_dates_for_tts(text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
@@ -222,6 +231,8 @@ def _split_long_text(text: str, max_chars: int) -> list[str]:
         if not sentence:
             continue
         if len(sentence) > max_chars:
+            if current:
+                chunks.append(current)
             chunks.extend(_split_by_words(sentence, max_chars))
             current = ""
             continue
@@ -233,7 +244,7 @@ def _split_long_text(text: str, max_chars: int) -> list[str]:
 
     if current:
         chunks.append(current)
-    return chunks
+    return _merge_short_tail_chunks(chunks, max_chars=max_chars)
 
 
 def _split_by_words(text: str, max_chars: int) -> list[str]:
@@ -247,4 +258,25 @@ def _split_by_words(text: str, max_chars: int) -> list[str]:
             current = f"{current} {word}".strip()
     if current:
         chunks.append(current)
-    return chunks
+    return _merge_short_tail_chunks(chunks, max_chars=max_chars)
+
+
+def _merge_short_tail_chunks(chunks: list[str], max_chars: int) -> list[str]:
+    if len(chunks) < 2:
+        return chunks
+    tail = chunks[-1].strip()
+    previous = chunks[-2].strip()
+    if len(tail) >= _MIN_TTS_CHUNK_CHARS:
+        return chunks
+    joined = f"{previous} {tail}".strip()
+    if len(joined) <= max_chars:
+        return [*chunks[:-2], joined]
+    # Rebalance complete words instead of exceeding the provider-size boundary.
+    words = previous.split()
+    while len(tail) < _MIN_TTS_CHUNK_CHARS and len(words) > 1:
+        candidate = words[-1] + " " + tail
+        if len(candidate) > max_chars:
+            break
+        tail = candidate
+        words.pop()
+    return [*chunks[:-2], " ".join(words), tail]

@@ -1,9 +1,8 @@
 import json
 import logging
-import re
 import shutil
 import subprocess
-from html import escape
+from html import escape, unescape
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,7 +14,8 @@ from app.config.settings import settings
 from app.db.repositories.episodes import mark_episode_published
 from app.db.session import SessionLocal, init_db
 from app.podcast.script_quality import build_script_quality_report, quality_gate_allows_tts
-from app.telegram_reader.client import create_telegram_client
+from app.telegram_reader.client import create_telegram_client, telegram_session
+from app.utils.locking import exclusive_lock
 
 TELEGRAM_CAPTION_LIMIT = 1024
 PUBLISH_AUDIO_DIR = "publish"
@@ -33,13 +33,25 @@ class TelegramPublishResult:
 async def publish_episode_package(
     package_path: Path,
     channel_id: str | None = None,
+    *,
+    republish: bool = False,
 ) -> TelegramPublishResult:
     """Publish an episode package audio file to a Telegram channel."""
+    # ponytail: Linux file lock; use a shared DB lock if publishers move to multiple hosts.
+    with exclusive_lock(package_path / ".package.lock", "This episode package is busy."):
+        if (package_path / "telegram_publish.json").exists() and not republish:
+            raise RuntimeError("Episode is already published. Use --republish to send it again.")
+        return await _publish_episode_package(package_path, channel_id)
+
+
+async def _publish_episode_package(
+    package_path: Path,
+    channel_id: str | None,
+) -> TelegramPublishResult:
     target_channel = (channel_id or settings.telegram_publish_channel_id or "").strip()
     if not target_channel:
         raise RuntimeError(
-            "Telegram publish channel is not configured. "
-            "Set TELEGRAM_PUBLISH_CHANNEL_ID in .env.",
+            "Telegram publish channel is not configured. Set TELEGRAM_PUBLISH_CHANNEL_ID in .env.",
         )
 
     source_audio_path = package_path / "audio.mp3"
@@ -52,7 +64,7 @@ async def publish_episode_package(
     caption = build_episode_caption(package_path)
     audio_path = prepare_publish_audio(package_path)
     client = create_telegram_client()
-    async with client:
+    async with telegram_session(client):
         entity = await _resolve_publish_entity(client, target_channel)
         try:
             message = await client.send_file(
@@ -71,13 +83,14 @@ async def publish_episode_package(
                 ) from exc
             raise
 
-    result = TelegramPublishResult(
-        channel_id=target_channel,
-        message_id=int(message.id),
-        audio_path=audio_path,
-        caption=caption,
-    )
-    write_publish_result(package_path / "telegram_publish.json", result)
+        result = TelegramPublishResult(
+            channel_id=target_channel,
+            message_id=int(message.id),
+            audio_path=audio_path,
+            caption=caption,
+        )
+        # Record the confirmed send before disconnecting: cleanup can fail too.
+        write_publish_result(package_path / "telegram_publish.json", result)
     _mark_package_published(package_path, result)
     return result
 
@@ -85,7 +98,9 @@ async def publish_episode_package(
 def build_episode_caption(package_path: Path) -> str:
     metadata = _read_json(package_path / "episode_metadata.json")
     fallback_metadata = _read_json(package_path / "metadata.json")
-    episode_title = build_episode_title(package_path, metadata=metadata, fallback_metadata=fallback_metadata)
+    episode_title = build_episode_title(
+        package_path, metadata=metadata, fallback_metadata=fallback_metadata
+    )
     summaries = _episode_summaries(package_path, metadata)
 
     lines = [escape(episode_title), "", "Обзор главных новостей в мире IT."]
@@ -93,7 +108,10 @@ def build_episode_caption(package_path: Path) -> str:
         lines.append("")
         lines.append("<b>Темы выпуска:</b>")
         for summary in summaries:
-            lines.append(f"- {escape(_ensure_sentence_period(_short_news_title(summary)))}")
+            bullet = f"- {escape(_ensure_sentence_period(_short_news_title(summary)))}"
+            candidate = "\n".join([*lines, bullet, "", "Приятного прослушивания!"])
+            if len(candidate.encode("utf-16-le")) // 2 <= TELEGRAM_CAPTION_LIMIT:
+                lines.append(bullet)
     lines.extend(["", "Приятного прослушивания!"])
 
     return _trim_caption("\n".join(lines), TELEGRAM_CAPTION_LIMIT)
@@ -120,9 +138,13 @@ def build_episode_title(
     metadata: dict[str, Any] | None = None,
     fallback_metadata: dict[str, Any] | None = None,
 ) -> str:
-    metadata = metadata if metadata is not None else _read_json(package_path / "episode_metadata.json")
+    metadata = (
+        metadata if metadata is not None else _read_json(package_path / "episode_metadata.json")
+    )
     fallback_metadata = (
-        fallback_metadata if fallback_metadata is not None else _read_json(package_path / "metadata.json")
+        fallback_metadata
+        if fallback_metadata is not None
+        else _read_json(package_path / "metadata.json")
     )
     episode_number = _episode_number(package_path)
     date_text = _episode_date_text(metadata, fallback_metadata)
@@ -179,7 +201,10 @@ def _mark_package_published(package_path: Path, result: TelegramPublishResult) -
                 message_id=result.message_id,
             )
             if episode is None:
-                logger.info("Episode %s is not recorded in DB; publish JSON was written only.", package_path.name)
+                logger.info(
+                    "Episode %s is not recorded in DB; publish JSON was written only.",
+                    package_path.name,
+                )
     except Exception:
         logger.exception("Could not update local episode publish history for %s", package_path)
 
@@ -235,9 +260,7 @@ def _episode_number(package_path: Path) -> int:
     if not episodes_dir.exists():
         return 1
     packages = sorted(
-        path
-        for path in episodes_dir.iterdir()
-        if path.is_dir() and (path / "audio.mp3").exists()
+        path for path in episodes_dir.iterdir() if path.is_dir() and (path / "audio.mp3").exists()
     )
     try:
         return packages.index(package_path) + 1
@@ -265,7 +288,9 @@ def _episode_summaries(package_path: Path, metadata: dict[str, Any]) -> list[str
     if summaries:
         return summaries
 
-    topic_summaries = [str(topic).strip() for topic in metadata.get("topics") or [] if str(topic).strip()]
+    topic_summaries = [
+        str(topic).strip() for topic in metadata.get("topics") or [] if str(topic).strip()
+    ]
     if topic_summaries:
         return topic_summaries
 
@@ -365,32 +390,7 @@ def _one_line(value: str, limit: int) -> str:
 
 
 def _short_news_title(value: str) -> str:
-    clean = " ".join(value.replace("\n", " ").split()).strip(" -—")
-    lower = clean.casefold()
-
-    if "openai" in lower and "realtime" in lower and "voice" in lower:
-        return "OpenAI выпустил новые realtime voice-модели"
-    if "мортал комбат 2" in lower or "mortal kombat 2" in lower:
-        return 'Выход фильма "Мортал Комбат 2"'
-
-    for phrase in [", официально", ", тихо", ", не спеша"]:
-        index = clean.casefold().find(phrase)
-        if index > 0:
-            clean = clean[:index].strip()
-            break
-
-    separator_match = re.search(r"\s+[—–-]\s+|[.:?!…]\s+", clean)
-    if separator_match:
-        clean = clean[: separator_match.start()].strip()
-    else:
-        for phrase in [" Судя ", " Подробнее ", " Все подробности "]:
-            index = clean.find(phrase)
-            if index > 0:
-                clean = clean[:index].strip()
-                break
-
-    clean = clean.strip(" .,:;!?—-")
-    return _one_line(clean, 68)
+    return " ".join(value.split())
 
 
 def _ensure_sentence_period(value: str) -> str:
@@ -403,6 +403,19 @@ def _ensure_sentence_period(value: str) -> str:
 
 
 def _trim_caption(caption: str, limit: int) -> str:
-    if len(caption) <= limit:
+    if len(caption.encode("utf-16-le")) <= limit * 2:
         return caption
-    return caption[: limit - 1].rstrip() + "..."
+    # Only the generated bold heading uses markup. Drop it when truncating so
+    # tags stay balanced, and escape each character to keep entities intact.
+    text = unescape(caption.replace("<b>", "").replace("</b>", ""))
+    suffix = "." * min(3, max(0, limit))
+    budget = max(0, limit - len(suffix))
+    parts = []
+    for char in text:
+        token = escape(char)
+        size = len(token.encode("utf-16-le")) // 2
+        if size > budget:
+            break
+        parts.append(token)
+        budget -= size
+    return "".join(parts).rstrip() + suffix

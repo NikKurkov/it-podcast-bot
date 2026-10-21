@@ -174,13 +174,16 @@ def test_update_editorial_state_selects_and_rejects_posts() -> None:
         )
 
         assert post is not None
-        assert update_editorial_state(
-            session,
-            [post.id],
-            selected=True,
-            category="top news",
-            editor_note="Strong opener",
-        ) == 1
+        assert (
+            update_editorial_state(
+                session,
+                [post.id],
+                selected=True,
+                category="top news",
+                editor_note="Strong opener",
+            )
+            == 1
+        )
         selected_posts = get_selected_posts(session)
         assert selected_posts[0].category == "top news"
         assert selected_posts[0].editor_note == "Strong opener"
@@ -193,3 +196,61 @@ def _make_session_factory() -> sessionmaker:
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+
+def test_digest_fetches_sources_without_per_post_queries() -> None:
+    from sqlalchemy import event
+
+    session_factory = _make_session_factory()
+    with session_factory() as session:
+        for index in range(4):
+            source = get_or_create_source(session, f"source{index}")
+            save_post(
+                session,
+                source,
+                {
+                    "telegram_message_id": 1,
+                    "message_date": datetime(2026, 5, 7, tzinfo=timezone.utc),
+                    "text": f"story {index}",
+                },
+            )
+    queries = []
+    engine = session_factory.kw["bind"]
+
+    def count_query(conn, cursor, statement, parameters, context, executemany):
+        queries.append(statement)
+
+    event.listen(engine, "before_cursor_execute", count_query)
+    try:
+        with session_factory() as session:
+            posts = get_posts_for_digest(session)
+            assert {post.source_channel.username for post in posts} == {
+                "source0",
+                "source1",
+                "source2",
+                "source3",
+            }
+            assert len(queries) == 1
+    finally:
+        event.remove(engine, "before_cursor_execute", count_query)
+
+
+def test_edited_message_updates_text_hash_without_resetting_editorial_flags():
+    from app.utils.hashing import make_text_hash
+
+    factory = _make_session_factory()
+    with factory() as session:
+        source = get_or_create_source(session, "updates")
+        data = {
+            "telegram_message_id": 42,
+            "message_date": datetime.now(timezone.utc),
+            "text": "Release is available.",
+        }
+        post = save_or_update_post(session, source, data)["post"]
+        post.is_processed = True
+        session.commit()
+        result = save_or_update_post(session, source, {**data, "text": "Release is NOT available."})
+        assert result["updated"] and not result["created"]
+        assert result["post"].text == "Release is NOT available."
+        assert result["post"].text_hash == make_text_hash("Release is NOT available.")
+        assert result["post"].is_processed

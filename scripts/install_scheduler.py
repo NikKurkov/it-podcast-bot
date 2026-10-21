@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config.settings import settings
+from scripts.start_llm_server import resource_properties
 
 SERVICE_NAME = "it-podcast-bot.service"
 TIMER_NAME = "it-podcast-bot.timer"
@@ -26,10 +27,16 @@ class TcpWait:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Install a user systemd timer for daily podcast generation.")
+    parser = argparse.ArgumentParser(
+        description="Install a user systemd timer for daily podcast generation."
+    )
     parser.add_argument("--time", default="07:00", help="Daily start time in HH:MM format.")
-    parser.add_argument("--dry-run", action="store_true", help="Print unit files without writing them.")
-    parser.add_argument("--no-enable", action="store_true", help="Write units but do not enable/start the timer.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print unit files without writing them."
+    )
+    parser.add_argument(
+        "--no-enable", action="store_true", help="Write units but do not enable/start the timer."
+    )
     parser.add_argument(
         "--proxy-service-command",
         default=None,
@@ -58,7 +65,9 @@ def main() -> None:
     start_time = _normalize_time(args.time)
     python_path = PROJECT_ROOT / ".venv" / "bin" / "python"
     waits = _default_tcp_waits()
-    proxy_service_text = build_proxy_service_unit(_proxy_service_command(args.proxy_service_command))
+    proxy_service_text = build_proxy_service_unit(
+        _proxy_service_command(args.proxy_service_command)
+    )
     ollama_service_text = build_ollama_service_unit(PROJECT_ROOT)
     service_text = build_service_unit(
         project_root=PROJECT_ROOT,
@@ -98,7 +107,9 @@ def main() -> None:
     if not args.no_enable:
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
         if proxy_service_text:
-            subprocess.run(["systemctl", "--user", "enable", "--now", PROXY_SERVICE_NAME], check=True)
+            subprocess.run(
+                ["systemctl", "--user", "enable", "--now", PROXY_SERVICE_NAME], check=True
+            )
         subprocess.run(["systemctl", "--user", "enable", "--now", TIMER_NAME], check=True)
 
     print(f"Installed {SERVICE_NAME} and {TIMER_NAME}.")
@@ -121,8 +132,6 @@ def build_service_unit(
         str(python_path),
         str(script_path),
         "--with-music",
-        "--tts-provider",
-        "xtts",
     ]
     if publish:
         command.append("--publish")
@@ -140,7 +149,7 @@ def build_service_unit(
 
     lines = [
         "[Unit]",
-        "Description=Generate and publish NikCast daily podcast",
+        "Description=Generate and publish daily podcast",
         f"Wants={' '.join(wants)}",
         f"After={' '.join(after)}",
         "StartLimitIntervalSec=2h",
@@ -149,7 +158,11 @@ def build_service_unit(
         "[Service]",
         "Type=oneshot",
         f"WorkingDirectory={_unit_quote(project_root)}",
-        "Environment=TTS_PROVIDER=xtts",
+        "MemoryMax=5G",
+        "MemoryHigh=4864M",
+        "MemorySwapMax=256M",
+        "OOMScoreAdjust=500",
+        "OOMPolicy=stop",
         f"StandardOutput=append:{_unit_quote(log_path)}",
         f"StandardError=append:{_unit_quote(log_path)}",
         "Restart=on-failure",
@@ -173,19 +186,24 @@ def build_service_unit(
 
 
 def build_ollama_service_unit(project_root: Path) -> str:
-    script_path = project_root / "scripts" / "serve_ollama_cpu.sh"
+    script_path = project_root / "scripts" / "start_llm_server.py"
+    python_path = project_root / ".venv" / "bin" / "python"
     return "\n".join(
         [
             "[Unit]",
-            "Description=Ollama CPU server for it-podcast-bot",
+            "Description=Local model server for it-podcast-bot",
             "After=network-online.target",
             "Wants=network-online.target",
-            "StopWhenUnneeded=yes",
+            "StartLimitIntervalSec=600",
+            "StartLimitBurst=2",
             "",
             "[Service]",
             "Type=simple",
             f"WorkingDirectory={_unit_quote(project_root)}",
-            f"ExecStart=/usr/bin/bash {_unit_quote(script_path)}",
+            f"ExecStart={_unit_quote(python_path)} {_unit_quote(script_path)} --foreground",
+            f"ExecStartPost={_unit_quote(python_path)} {_unit_quote(script_path)} --wait-ready",
+            "TimeoutStartSec=150",
+            *resource_properties(),
             "Restart=on-failure",
             "RestartSec=10s",
             "",

@@ -1,7 +1,2 @@
-реклама
-промокод
-Альфа-Банк
-БДСМ
-секс
-отношения
-шибари
+# Optional literal filters for explicitly requested manual exports.
+# Morning editorial selection uses PODCAST_EDITORIAL_BRIEF, not keyword blacklists.

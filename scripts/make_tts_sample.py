@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,8 @@ from app.audio.music import mix_background_music
 from app.audio.tts import synthesize_dialogue_lines
 from app.audio.voices import get_voice_config
 from app.config.settings import settings
+from app.llm.pronunciation import prepare_dialogue_speech
+from app.llm.runtime import release_local_models
 
 
 SAMPLE_DIALOGUE = [
@@ -56,8 +59,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", default="data/audio/sample_podcast.wav")
     parser.add_argument("--lines-dir", default="data/audio/sample_episode")
     parser.add_argument("--provider", choices=("silero", "xtts"), default=settings.tts_provider)
-    parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
-    parser.add_argument("--music-volume", type=float, default=settings.audio_background_music_volume)
+    parser.add_argument(
+        "--with-music", action="store_true", default=settings.audio_background_music
+    )
+    parser.add_argument(
+        "--music-volume", type=float, default=settings.audio_background_music_volume
+    )
     parser.add_argument("--music-path", default=settings.audio_background_music_path)
     parser.add_argument("--no-assemble", action="store_true")
     return parser.parse_args()
@@ -66,9 +73,21 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     try:
+        dialogue_lines = prepare_dialogue_speech(
+            [
+                replace(
+                    line,
+                    pause_after_ms=get_voice_config(line.speaker, args.provider)["pause_after_ms"],
+                )
+                for line in SAMPLE_DIALOGUE
+            ],
+            Path(args.lines_dir) / "speech_pronunciation.json",
+        )
+        if settings.llm_release_before_tts:
+            release_local_models()
         rendered_lines = asyncio.run(
             synthesize_dialogue_lines(
-                SAMPLE_DIALOGUE,
+                dialogue_lines,
                 Path(args.lines_dir),
                 provider_name=args.provider,
             ),
@@ -88,14 +107,13 @@ def main() -> None:
     if args.no_assemble:
         return
 
-    pauses = [
-        get_voice_config(line.speaker, provider_name=args.provider).get(
-            "pause_after_ms",
-            line.pause_after_ms,
-        )
-        for line in SAMPLE_DIALOGUE
-    ]
-    output_path = assemble_podcast(rendered_lines, Path(args.output), pauses_ms=pauses)
+    pauses = [line.pause_after_ms for line in dialogue_lines]
+    output_path = assemble_podcast(
+        rendered_lines,
+        Path(args.output),
+        pauses_ms=pauses,
+        sample_rate=settings.tts_sample_rate,
+    )
     if args.with_music:
         clean_voice_path = output_path.with_name(f"{output_path.stem}_voice.wav")
         output_path.replace(clean_voice_path)

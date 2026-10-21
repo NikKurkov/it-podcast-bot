@@ -5,6 +5,7 @@ import scripts.publish_latest as publish_latest
 
 def test_resolve_latest_episode_ignores_packages_without_audio(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(publish_latest, "PROJECT_ROOT", tmp_path)
     older = tmp_path / "data" / "episodes" / "older"
     broken_newer = tmp_path / "data" / "episodes" / "broken-newer"
     newer_with_audio = tmp_path / "data" / "episodes" / "newer-with-audio"

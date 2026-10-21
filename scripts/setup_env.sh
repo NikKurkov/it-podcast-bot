@@ -15,7 +15,8 @@ uv venv .venv --python 3.11 --clear
 uv pip install --python .venv/bin/python -r requirements.txt
 uv pip install --python .venv/bin/python torch==2.5.1+cpu torchaudio==2.5.1+cpu --index-url https://download.pytorch.org/whl/cpu
 uv pip install --python .venv/bin/python "TTS>=0.22,<0.23"
-uv pip install --python .venv/bin/python "transformers==4.33.3"
+uv pip install --python .venv/bin/python "transformers==4.33.3" "networkx>=2.5,<3"
+uv pip check --python .venv/bin/python
 
 mkdir -p data/voices/xtts
 

@@ -1,5 +1,6 @@
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+from contextlib import asynccontextmanager
 
 from telethon import TelegramClient
 
@@ -45,3 +46,21 @@ def create_telegram_client() -> TelegramClient:
         settings.telegram_api_hash,
         proxy=_build_proxy(),
     )
+
+
+@asynccontextmanager
+async def telegram_session(client: TelegramClient, *, interactive: bool = False):
+    if interactive:
+        async with client:
+            yield client
+        return
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            raise RuntimeError(
+                "Saved Telegram session is not authorized. "
+                "Run scripts/collect_posts.py interactively to log in before scheduled runs.",
+            )
+        yield client
+    finally:
+        await client.disconnect()

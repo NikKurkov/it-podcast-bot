@@ -1,0 +1,19 @@
+{
+  "silero": {
+    "url": "https://models.silero.ai/models/tts/ru/v5_6_ru.pt",
+    "size_bytes": 147664410,
+    "sha256": "04cc9b1d08ce38bcaa9d02c488d80d3e6806d17f7eaa7c95982f36a3cbf50b2e",
+    "downloaded_at": "2026-10-21T04:11:21.779064+00:00",
+    "source": "https://github.com/snakers4/silero-models",
+    "license": "CC BY-NC 4.0; see upstream LICENSE"
+  },
+  "llm": {
+    "alias": "qwen3.5:9b",
+    "format": "GGUF",
+    "sha256": "02d45dc1cf451ba2475ac33b301c2dd8f985abe4c182ce04a1f2f5bf0260278d",
+    "deployment_path": "data/models/qwen3.5-9b.gguf",
+    "source": "https://ollama.com/library/qwen3.5:9b",
+    "size_bytes": 5629109120,
+    "local_sha256_verified": true
+  }
+}

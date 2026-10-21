@@ -4,24 +4,44 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.config.settings import settings
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convenience runner for the local podcast pipeline.")
+    parser = argparse.ArgumentParser(
+        description="Convenience runner for the local podcast pipeline."
+    )
     parser.add_argument("--fresh", action="store_true", help="Clean generated data before running.")
     parser.add_argument("--no-collect", action="store_true", help="Reuse already collected posts.")
-    parser.add_argument("--script-only", action="store_true", help="Generate package and script without audio.")
-    parser.add_argument("--audio-only", action="store_true", help="Render audio for the latest package.")
-    parser.add_argument("--remix-only", action="store_true", help="Only remix music for the latest package.")
+    parser.add_argument(
+        "--no-research", action="store_true", help="Do not fetch linked source articles."
+    )
+    parser.add_argument(
+        "--script-only", action="store_true", help="Generate package and script without audio."
+    )
+    parser.add_argument(
+        "--audio-only", action="store_true", help="Render audio for the latest package."
+    )
+    parser.add_argument(
+        "--remix-only", action="store_true", help="Only remix music for the latest package."
+    )
     parser.add_argument("--preview", action="store_true", help="Fast preview run with fewer posts.")
     parser.add_argument("--audio", action="store_true", help="Generate audio too.")
-    parser.add_argument("--with-music", action="store_true", help="Mix background music into audio.")
-    parser.add_argument("--tts-provider", choices=("silero", "xtts", "espeak"), default="xtts")
+    parser.add_argument(
+        "--with-music", action="store_true", help="Mix background music into audio."
+    )
+    parser.add_argument(
+        "--tts-provider", choices=("silero", "xtts", "espeak"), default=settings.tts_provider
+    )
     parser.add_argument("--llm-profile", choices=("default", "fast", "final"), default="final")
     parser.add_argument("--collect-limit", type=int, default=None)
     parser.add_argument("--pool-limit", type=int, default=None)
     parser.add_argument("--top", type=int, default=None)
     parser.add_argument("--slug", default=None)
+    parser.add_argument("--target-minutes", type=float, default=None)
     parser.add_argument("--publish", action="store_true", help="Publish final audio to Telegram.")
     return parser.parse_args()
 
@@ -52,10 +72,12 @@ def main() -> None:
     top = args.top
     pool_limit = args.pool_limit
     collect_limit = args.collect_limit
+    target_minutes = args.target_minutes
     if args.preview:
         top = top or 2
         pool_limit = pool_limit or 20
         collect_limit = collect_limit or 10
+        target_minutes = target_minutes or 2
 
     final_args = [
         str(python),
@@ -66,6 +88,8 @@ def main() -> None:
     ]
     if args.no_collect:
         final_args.append("--no-collect")
+    if args.no_research:
+        final_args.append("--no-research")
     if args.audio or args.with_music or not args.script_only:
         final_args.extend(["--with-audio", "--tts-provider", args.tts_provider])
     if args.with_music:
@@ -78,7 +102,9 @@ def main() -> None:
         final_args.extend(["--top", str(top)])
     if args.slug:
         final_args.extend(["--slug", args.slug])
-    if args.script_only:
+    if target_minutes is not None:
+        final_args.extend(["--target-minutes", str(target_minutes)])
+    if args.script_only or (args.preview and not args.publish):
         final_args.append("--no-publish")
     elif args.publish:
         final_args.append("--publish")

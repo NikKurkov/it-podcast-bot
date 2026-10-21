@@ -88,8 +88,9 @@ def _script_quality_summary(report_path: Path) -> list[str]:
 
     lines = [
         f"lines: {report.get('lines_count', 0)}",
-        f"opening: {report.get('opening_present')}",
-        f"rundown: {report.get('rundown_present')}",
+        f"words: {report.get('word_count', 'unknown')}",
+        f"estimated duration: {_format_duration(float(report.get('estimated_duration_seconds') or 0))} "
+        f"({report.get('duration_status', 'unknown')})",
         f"transitions: {report.get('transition_lines', 0)}",
     ]
     warnings = report.get("warnings") or []

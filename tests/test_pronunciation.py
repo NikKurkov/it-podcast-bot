@@ -33,3 +33,17 @@ def test_apply_pronunciation_map_prefers_longest_match() -> None:
     )
 
     assert text == "хаггинг-фейс и эй-пи-ай."
+
+
+def test_unknown_latin_acronyms_are_spelled_without_vendor_rules():
+    assert apply_pronunciation_map("HTTP/2: 8GB, XMLParser и C++.", {}) == (
+        "эйч-ти-ти-пи/2: 8 джи-би, XMLParser и C++."
+    )
+
+
+def test_explicit_pronunciation_overrides_acronym_spelling():
+    assert apply_pronunciation_map("XYZ и ABC.", {"XYZ": "зет", "ABC": "ABC"}) == "зет и ABC."
+
+
+def test_uppercase_pronounceable_words_are_not_assumed_to_be_initialisms():
+    assert apply_pronunciation_map("TEXT FAST HTTP.", {}) == "TEXT FAST эйч-ти-ти-пи."

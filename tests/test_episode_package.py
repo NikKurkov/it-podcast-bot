@@ -55,3 +55,86 @@ def _make_session_factory() -> sessionmaker:
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+
+def test_package_refuses_to_overwrite_existing_directory(tmp_path, monkeypatch) -> None:
+    import pytest
+
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / "data/episodes/existing"
+    path.mkdir(parents=True)
+    sentinel = path / "script_draft.md"
+    sentinel.write_text("original", encoding="utf-8")
+    with _make_session_factory()() as session:
+        with pytest.raises(FileExistsError):
+            create_episode_package(session, slug="existing")
+    assert sentinel.read_text(encoding="utf-8") == "original"
+
+
+def test_package_refuses_paths_in_slug(tmp_path, monkeypatch) -> None:
+    import pytest
+    from app.pipeline.episode_package import _build_package_slug
+
+    monkeypatch.chdir(tmp_path)
+    for slug in ("../outside", "/tmp/outside", ".", "..", "nested/name", "nested\\name", " "):
+        with pytest.raises(ValueError):
+            _build_package_slug(slug)
+
+
+def test_package_quality_gate_blocks_before_tts(tmp_path, monkeypatch) -> None:
+    import pytest
+    from app.pipeline import episode_package
+    from app.podcast.script_validation import validate_dialogue_script
+
+    monkeypatch.chdir(tmp_path)
+    script = "unknown: Привет.\nnika: Новость.\ngleb: Понятно.\nartem: Пока."
+    monkeypatch.setattr(
+        episode_package,
+        "rewrite_chunked_dialogue_script_draft",
+        lambda *args, **kwargs: (script, validate_dialogue_script(script)),
+    )
+    monkeypatch.setattr(episode_package, "ensure_opening_and_rundown", lambda text, **kwargs: text)
+
+    async def unexpected_tts(*args, **kwargs):
+        pytest.fail("TTS must not run for a blocked script")
+
+    monkeypatch.setattr(episode_package, "synthesize_dialogue_lines", unexpected_tts)
+    with _make_session_factory()() as session:
+        with pytest.raises(RuntimeError, match="failed validation"):
+            create_episode_package(
+                session,
+                slug="blocked",
+                llm_profile="fast",
+                dialogue_script=True,
+                with_audio=True,
+                tts_provider="xtts",
+            )
+    assert (tmp_path / "data/episodes/blocked/llm_script.md").exists()
+
+
+def test_narrative_espeak_audio_does_not_require_dialogue_cast(tmp_path, monkeypatch):
+    from app.pipeline import episode_package
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(episode_package, "rewrite_script_draft", lambda *a, **k: "Обычный рассказ.")
+
+    def write_audio(text, path, **kwargs):
+        path.write_bytes(b"voice")
+        return path
+
+    def convert_audio(source, destination):
+        destination.write_bytes(source.read_bytes())
+        return destination
+
+    monkeypatch.setattr(episode_package, "synthesize_with_espeak", write_audio)
+    monkeypatch.setattr(episode_package, "convert_wav_to_mp3", convert_audio)
+    monkeypatch.setattr(episode_package, "write_audio_report", lambda *a, **k: None)
+    with _make_session_factory()() as session:
+        package = create_episode_package(
+            session,
+            slug="narrative",
+            llm_profile="fast",
+            with_audio=True,
+            tts_provider="espeak",
+        )
+    assert package.audio_mp3_path.read_bytes() == b"voice"

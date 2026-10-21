@@ -1,90 +1,58 @@
-# MVP workflow
+# Ручной рабочий процесс
 
-## 1. Check setup
+Для полного утреннего выпуска используйте `make podcast-preview` и команды
+публикации из README. Ниже — ручной отбор и промежуточные экспорты.
+Все команды выполняются из корня репозитория.
 
-```bash
-make check
-```
-
-Use `python scripts/check_setup.py --telegram` when you need to verify the saved
-Telegram session.
-
-## 2. Collect posts
+## Подготовка и просмотр
 
 ```bash
+make doctor
 make collect
-```
-
-The collector reads channels from `config/channels.txt`, stores text posts in
-SQLite, deduplicates by channel and Telegram message id, and refreshes metrics
-for already saved posts.
-
-## 3. Inspect data
-
-```bash
 make stats
 make sources
 make list
 make rank
 make validate
+.venv/bin/python scripts/show_post.py --id 1
 ```
 
-Use `scripts/show_post.py --id <id>` to inspect a single post.
+Сборщик обновляет метрики и изменённые тексты уже известных сообщений.
+Для проверки сессии есть `make doctor-telegram`.
 
-## 4. Export digest
+## Отбор и экспорт
 
 ```bash
-python scripts/make_digest.py --use-exclude-keywords --ranked --limit 20
+.venv/bin/python scripts/edit_post.py --id 1 --select --category "top news"
+.venv/bin/python scripts/list_selected_posts.py
+.venv/bin/python scripts/make_script_draft.py
+.venv/bin/python scripts/make_digest.py --ranked --limit 20
 ```
 
-Exports go to `data/episodes/` and are ignored by git.
+Эти команды экспортируют вручную выбранные материалы. Они не выполняют
+полный редакторский аудит и не публикуют сообщения.
 
-## 5. Editorial selection
-
-```bash
-python scripts/edit_post.py --id 1 --select --category "top news" --note "Good opener"
-python scripts/list_selected_posts.py
-python scripts/make_script_draft.py
-```
-
-This is still a non-LLM workflow: it only structures manually selected posts.
-
-## 6. Local LLM rewrite
+## Локальная переработка и звук
 
 ```bash
-ollama pull qwen2.5:7b-instruct
-make ollama-cpu
+make ollama
 make llm-check
 make llm-script
-```
-
-The LLM reads `data/episodes/latest_script.md` and writes
-`data/episodes/latest_llm_script.md`.
-
-## 7. Create episode package
-
-```bash
-python scripts/make_episode_package.py --limit 10
-python scripts/make_episode_package.py --limit 10 --llm-profile final
-```
-
-Packages are stored in `data/episodes/<timestamp>/`.
-
-## 8. Local TTS
-
-```bash
 make audio
 ```
 
-This reads `data/episodes/latest_llm_script.md` and writes local WAV/MP3 files
-to `data/audio/`.
+Результаты находятся в `data/episodes/` и `data/audio/`. Провайдер голоса
+берётся из `.env`; исходный текст и подготовленный для TTS текст сохраняются
+раздельно. Для пакетного сценария с источниками и проверками используйте
+`make podcast-script`, затем `make podcast-audio` и `make podcast-check`.
 
-## 9. Create legacy episode draft
+## Обслуживание
 
 ```bash
-python scripts/make_episode_draft.py --use-exclude-keywords --limit 10
-python scripts/list_episode_drafts.py
+make scheduler-check
+make backup
+make clean-generated-dry-run
 ```
 
-Episode drafts are local structured snapshots. They do not use LLMs, audio, or
-publishing.
+История исключения повторов учитывает опубликованные выпуски; локальные
+превью в неё не входят. Очистку сначала проверяйте через dry run.

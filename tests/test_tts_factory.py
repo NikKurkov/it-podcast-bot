@@ -1,6 +1,5 @@
 import pytest
 
-from app.audio.providers.piper import PiperTTSProvider
 from app.audio.providers.silero import SileroTTSProvider
 from app.audio.providers.xtts import XTTSTTSProvider
 from app.audio.tts import get_tts_provider
@@ -10,8 +9,9 @@ def test_get_tts_provider_silero() -> None:
     assert isinstance(get_tts_provider("silero"), SileroTTSProvider)
 
 
-def test_get_tts_provider_piper() -> None:
-    assert isinstance(get_tts_provider("piper"), PiperTTSProvider)
+def test_unimplemented_provider_is_not_advertised_as_available() -> None:
+    with pytest.raises(ValueError, match="Unknown TTS provider"):
+        get_tts_provider("piper")
 
 
 def test_get_tts_provider_xtts() -> None:

@@ -8,5 +8,6 @@ def create_llm_client() -> OpenAI:
     return OpenAI(
         api_key=settings.llm_api_key,
         base_url=settings.llm_base_url,
+        max_retries=0,
         http_client=httpx.Client(trust_env=False),
     )

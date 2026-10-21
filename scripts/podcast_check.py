@@ -7,6 +7,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.pipeline.episode_paths import resolve_episode_path
+
 from app.audio.dialogue import script_to_dialogue_lines
 from app.pipeline.episode_package import EpisodePackage
 from app.pipeline.episode_report import format_episode_report
@@ -16,9 +18,13 @@ MAX_TTS_TEXT_CHARS = 170
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Show a pre-TTS quality report for an episode package.")
+    parser = argparse.ArgumentParser(
+        description="Show a pre-TTS quality report for an episode package."
+    )
     parser.add_argument("--episode", default="latest", help="Episode directory or `latest`.")
-    parser.add_argument("--strict", action="store_true", help="Exit non-zero if quality gate or TTS risk fails.")
+    parser.add_argument(
+        "--strict", action="store_true", help="Exit non-zero if quality gate or TTS risk fails."
+    )
     return parser.parse_args()
 
 
@@ -69,15 +75,7 @@ def main() -> None:
 
 
 def _resolve_episode_path(value: str) -> Path:
-    if value != "latest":
-        path = Path(value)
-        return path if path.is_absolute() else PROJECT_ROOT / path
-
-    episodes_dir = PROJECT_ROOT / "data" / "episodes"
-    candidates = [path for path in episodes_dir.iterdir() if path.is_dir()]
-    if not candidates:
-        raise SystemExit("No episode packages found in data/episodes.")
-    return max(candidates, key=lambda path: path.stat().st_mtime)
+    return resolve_episode_path(value, PROJECT_ROOT)
 
 
 def _package_from_path(path: Path) -> EpisodePackage:
@@ -119,8 +117,7 @@ def _tts_risks(script_path: Path | None) -> list[str]:
     for index, line in enumerate(lines, start=1):
         if len(line.text) > MAX_TTS_TEXT_CHARS:
             risks.append(
-                f"line {index} by {line.speaker} is {len(line.text)} chars "
-                f"(>{MAX_TTS_TEXT_CHARS})",
+                f"line {index} by {line.speaker} is {len(line.text)} chars (>{MAX_TTS_TEXT_CHARS})",
             )
     if not lines:
         risks.append("script has no speakable dialogue lines")

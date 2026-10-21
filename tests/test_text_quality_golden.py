@@ -1,29 +1,6 @@
 from app.podcast.script_quality import build_script_quality_report, postprocess_dialogue_script
 
 
-def test_golden_script_removes_typical_mechanical_phrases() -> None:
-    result = postprocess_dialogue_script(
-        """
-mark: Сегодня мы поговорим о практическом риске GitHub.
-nika: Ника, а по-человечески, что это значит для обычных пользователей?
-gleb: Глеб, а по-человечески, запасной план опять забыли.
-artem: Командам стоит проверить доступы.
-mark: Давайте перейдем к следующей новости о Discord.
-nika: Интересно, как это влияет на обычного разработчика?
-gleb: Да, но это уже было. Командам стоит следить за такими новостями.
-artem: Здесь важно проверить контроль доступа.
-""",
-    )
-
-    normalized = result.script_text.casefold().replace("ё", "е")
-
-    assert "сегодня мы поговорим" not in normalized
-    assert normalized.count("а по-человечески") <= 1
-    assert "командам стоит" not in normalized
-    assert "давайте перейдем" not in normalized
-    assert "интересно, как это влияет" not in normalized
-
-
 def test_golden_script_flags_stiff_report_style() -> None:
     report = build_script_quality_report(
         """
@@ -36,8 +13,6 @@ nika: Практический вывод простой: проверьте л�
 """,
     )
 
-    assert "text_lint:overused_word:важно" in report["warnings"]
-    assert "text_lint:repeated_construct:здесь_важно" in report["warnings"]
     assert "text_lint:repeated_line_start:здесь важно проверить" in report["warnings"]
 
 

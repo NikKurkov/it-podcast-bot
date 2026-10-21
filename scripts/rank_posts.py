@@ -15,7 +15,9 @@ from app.utils.text import shorten_text
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Rank collected posts with a simple non-LLM heuristic.")
+    parser = argparse.ArgumentParser(
+        description="Rank collected posts with a simple non-LLM heuristic."
+    )
     parser.add_argument("--limit", type=int, default=20, help="How many latest posts to rank.")
     parser.add_argument("--top", type=int, default=10, help="How many ranked posts to show.")
     parser.add_argument("--channel", default=None, help="Filter by channel username.")
@@ -38,11 +40,7 @@ def main() -> None:
         )
         if args.use_exclude_keywords:
             keywords = load_exclude_keywords()
-            posts = [
-                post
-                for post in posts
-                if not contains_excluded_keyword(post.text, keywords)
-            ]
+            posts = [post for post in posts if not contains_excluded_keyword(post.text, keywords)]
         source_weights = load_source_weights() if args.use_source_weights else {}
         ranked_posts = rank_posts(posts, source_weights=source_weights)[: args.top]
 
@@ -67,11 +65,7 @@ def main() -> None:
                     "   breakdown: "
                     f"engagement={breakdown.engagement:.2f}, "
                     f"freshness={breakdown.freshness:.2f}, "
-                    f"length={breakdown.length:.2f}, "
-                    f"it={breakdown.it_relevance:.2f}, "
-                    f"investigation={breakdown.investigation_potential:.2f}, "
-                    f"source={breakdown.source_weight:.2f}, "
-                    f"penalty={breakdown.penalty:.2f}",
+                    f"source={breakdown.source_weight:.2f}",
                 )
             if post.url:
                 print(f"   {post.url}")

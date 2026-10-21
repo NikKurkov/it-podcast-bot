@@ -87,132 +87,6 @@ def test_build_episode_caption_falls_back_to_selected_posts(tmp_path: Path) -> N
     assert "GitHub испытывает проблемы" in caption
 
 
-def test_build_episode_caption_shortens_selected_post_titles(tmp_path: Path) -> None:
-    package_path = tmp_path / "episode"
-    package_path.mkdir()
-    (package_path / "selected_posts.json").write_text(
-        json.dumps(
-            [
-                {
-                    "text": (
-                        "Discord массово сбоит по всему миру — сервис не запускается "
-                        "ни на одной платформе."
-                    ),
-                },
-                {
-                    "text": (
-                        "В Телеграм появилось казино, официально — в мессенджере теперь "
-                        "можно бросать кубики на деньги."
-                    ),
-                },
-                {
-                    "text": (
-                        "Instagram* больше не конфиденциальная соцсеть — компания Meta* "
-                        "убрала шифрование end2end."
-                    ),
-                },
-                {
-                    "text": (
-                        "Почти удачная вейкап-атака с выходом на комбо — жаль, что в блок "
-                        "Фильм «Мортал Комбат 2» во всём лучше первой части."
-                    ),
-                },
-                {
-                    "text": (
-                        "У OpenAI вышло новое поколение realtime voice-моделей 🎙️ "
-                        "GPT-Realtime-2: голосовая модель с reasoning уровня GPT-5."
-                    ),
-                },
-            ],
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    caption = build_episode_caption(package_path)
-
-    assert "- Discord массово сбоит по всему миру." in caption
-    assert "- В Телеграм появилось казино." in caption
-    assert "- Instagram* больше не конфиденциальная соцсеть." in caption
-    assert "- Выход фильма &quot;Мортал Комбат 2&quot;." in caption
-    assert "- OpenAI выпустил новые realtime voice-модели." in caption
-    assert "сервис не запускается" not in caption
-
-
-def test_build_episode_caption_keeps_topic_lines_laconic(tmp_path: Path) -> None:
-    package_path = tmp_path / "episode"
-    package_path.mkdir()
-    (package_path / "selected_posts.json").write_text(
-        json.dumps(
-            [
-                {
-                    "text": (
-                        "РКН добрался до GitHub? Сервис отслеживания интернет-цензуры "
-                        "OONI зафиксировал снижение доступности."
-                    ),
-                },
-                {
-                    "text": (
-                        "Программисты были в ужасе, когда прочитали этот материал… "
-                        "Вы наверняка слышали слово вайбкодинг."
-                    ),
-                },
-            ],
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    caption = build_episode_caption(package_path)
-
-    assert "- РКН добрался до GitHub." in caption
-    assert "- Программисты были в ужасе, когда прочитали этот материал." in caption
-    assert "OONI" not in caption
-    assert "вайбкодинг" not in caption
-
-
-def test_build_episode_caption_includes_all_short_topics(tmp_path: Path) -> None:
-    package_path = tmp_path / "episode"
-    package_path.mkdir()
-    (package_path / "selected_posts.json").write_text(
-        json.dumps(
-            [{"text": f"Короткая тема {index} — подробности не нужны."} for index in range(1, 8)],
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    caption = build_episode_caption(package_path)
-
-    assert "- Короткая тема 1." in caption
-    assert "- Короткая тема 7." in caption
-
-
-def test_build_episode_caption_does_not_cut_topic_mid_word(tmp_path: Path) -> None:
-    package_path = tmp_path / "episode"
-    package_path.mkdir()
-    (package_path / "selected_posts.json").write_text(
-        json.dumps(
-            [
-                {
-                    "text": (
-                        "Угнать за 60 секунд Forza Horizon 6 появилась на торрент-трекерах "
-                        "за неделю до официального релиза."
-                    ),
-                },
-            ],
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    caption = build_episode_caption(package_path)
-
-    assert "- Угнать за 60 секунд Forza Horizon 6 появилась на торрент-трекерах." in caption
-    assert "..." not in caption
-    assert " з." not in caption
-
-
 def test_prepare_publish_audio_embeds_cover_with_ffmpeg(
     tmp_path: Path,
     monkeypatch,
@@ -363,6 +237,15 @@ class FakeTelegramClient:
         self.dialog_id = dialog_id
         self.entity_id = entity_id
 
+    async def connect(self):
+        return None
+
+    async def is_user_authorized(self):
+        return True
+
+    async def disconnect(self):
+        return None
+
     async def __aenter__(self):
         return self
 
@@ -386,3 +269,132 @@ class FakeTelegramClient:
             "supports_streaming": supports_streaming,
         }
         return FakeMessage()
+
+
+def test_caption_truncation_respects_limit_and_html_boundaries() -> None:
+    from html.parser import HTMLParser
+
+    class StrictParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.tags = []
+
+        def handle_starttag(self, tag, attrs):
+            self.tags.append(tag)
+
+        def handle_endtag(self, tag):
+            assert self.tags.pop() == tag
+
+    for text in ("x" * 50, "a" * 16 + "&amp;" * 20, "<b>" + "x" * 50 + "</b>"):
+        result = publisher._trim_caption(text, 20)
+        assert len(result) <= 20
+        parser = StrictParser()
+        parser.feed(result)
+        parser.close()
+        assert parser.tags == []
+        assert not result.rstrip(".").endswith("&am")
+
+
+def test_publisher_rejects_already_published_package_before_connecting(tmp_path, monkeypatch):
+    import pytest
+
+    (tmp_path / "audio.mp3").write_bytes(b"audio")
+    (tmp_path / "telegram_publish.json").write_text('{"message_id": 42}')
+    monkeypatch.setattr(publisher.settings, "podcast_cover_image", None)
+
+    def unexpected_client():
+        pytest.fail("Already published package must not connect to Telegram")
+
+    monkeypatch.setattr(publisher, "create_telegram_client", unexpected_client)
+    with pytest.raises(RuntimeError, match="already published"):
+        asyncio.run(publish_episode_package(tmp_path, channel_id="-1001"))
+
+
+def test_publisher_serializes_concurrent_attempts_and_allows_explicit_republish(
+    tmp_path, monkeypatch
+):
+
+    (tmp_path / "audio.mp3").write_bytes(b"audio")
+    client = FakeTelegramClient()
+    sends = []
+
+    async def send_file(entity, **kwargs):
+        sends.append(kwargs)
+        await asyncio.sleep(0)
+        return FakeMessage()
+
+    client.send_file = send_file
+    monkeypatch.setattr(publisher, "create_telegram_client", lambda: client)
+    monkeypatch.setattr(publisher.settings, "podcast_cover_image", None)
+    monkeypatch.setattr(publisher, "_mark_package_published", lambda *args: None)
+
+    async def publish_twice():
+        return await asyncio.gather(
+            publish_episode_package(tmp_path, channel_id="-1001"),
+            publish_episode_package(tmp_path, channel_id="-1001"),
+            return_exceptions=True,
+        )
+
+    results = asyncio.run(publish_twice())
+    assert sum(isinstance(result, RuntimeError) for result in results) == 1
+    assert len(sends) == 1
+    asyncio.run(publish_episode_package(tmp_path, channel_id="-1001", republish=True))
+    assert len(sends) == 2
+
+
+def test_publish_receipt_survives_disconnect_error(tmp_path, monkeypatch):
+    import pytest
+
+    class DisconnectFailure(FakeTelegramClient):
+        async def disconnect(self):
+            raise OSError("disconnect failed")
+
+    (tmp_path / "audio.mp3").write_bytes(b"audio")
+    client = DisconnectFailure()
+    monkeypatch.setattr(publisher, "create_telegram_client", lambda: client)
+    monkeypatch.setattr(publisher.settings, "podcast_cover_image", None)
+    monkeypatch.setattr(publisher, "_mark_package_published", lambda *args: None)
+    with pytest.raises(OSError, match="disconnect failed"):
+        asyncio.run(publish_episode_package(tmp_path, channel_id="-1001"))
+    receipt = json.loads((tmp_path / "telegram_publish.json").read_text())
+    assert receipt["message_id"] == 42
+    with pytest.raises(RuntimeError, match="already published"):
+        asyncio.run(publish_episode_package(tmp_path, channel_id="-1001"))
+
+
+def test_caption_does_not_turn_speculation_into_a_release(tmp_path):
+    import json
+    from app.telegram_publisher.publisher import build_episode_caption
+
+    original = "НовыйВендор обсуждает voice realtime API; выпуск пока не подтверждён."
+    (tmp_path / "episode_metadata.json").write_text(
+        json.dumps(
+            {
+                "sources": [{"summary": original}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    caption = build_episode_caption(tmp_path)
+    assert original in caption
+    assert "выпустил" not in caption
+
+
+def test_caption_omits_oversized_optional_topic_whole(tmp_path):
+    import json
+    from app.telegram_publisher.publisher import build_episode_caption
+
+    long = "Важная оговорка: " + "полный текст " * 150 + "выпуска не было."
+    short = "ДругойВендор изменил условия лицензии."
+    (tmp_path / "episode_metadata.json").write_text(
+        json.dumps(
+            {
+                "sources": [{"summary": long}, {"summary": short}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    caption = build_episode_caption(tmp_path)
+    assert "Важная оговорка" not in caption
+    assert short in caption
+    assert len(caption.encode("utf-16-le")) // 2 <= 1024

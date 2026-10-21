@@ -2,6 +2,7 @@ telethon
 python-socks
 PySocks
 openai
+httpx
 numpy
 soundfile
 omegaconf

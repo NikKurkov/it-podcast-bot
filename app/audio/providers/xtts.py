@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config.settings import settings
+from app.audio.pronunciation import apply_pronunciation_map
 from app.audio.providers.base import BaseTTSProvider
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ class XTTSTTSProvider(BaseTTSProvider):
             output_path,
         )
         model.tts_to_file(
-            text=text,
+            text=apply_pronunciation_map(text),
             speaker_wav=str(speaker_wav),
             language=self.language,
             file_path=str(output_path),

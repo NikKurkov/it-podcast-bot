@@ -1,9 +1,9 @@
 import json
-import re
 from pathlib import Path
 
 from app.pipeline.daily_digest import DigestItem
-from app.pipeline.scoring import detect_topics
+from app.config.settings import settings
+from app.podcast.characters import get_active_character_keys
 
 
 def write_show_notes(
@@ -21,7 +21,7 @@ def write_show_notes(
     lines = [
         f"# {title}",
         "",
-        "НикКаст: разговорное техно-расследование по главным IT-новостям выпуска.",
+        f"{settings.podcast_title}: обсуждение новостей выпуска.",
         "",
     ]
     if duration_seconds:
@@ -29,7 +29,7 @@ def write_show_notes(
     if topics:
         lines.extend([f"Темы: {', '.join(topics)}", ""])
 
-    lines.extend(["## Таймкоды", ""])
+    lines.extend(["## Примерные таймкоды (оценка, не разметка аудио)", ""])
     if digest_items:
         lines.append(f"{timestamps[0]} — Вступление и обзор тем")
         for index, item in enumerate(digest_items, start=1):
@@ -48,11 +48,6 @@ def write_show_notes(
         if item.url:
             lines.append(f"   Ссылка: {item.url}")
 
-    lines.extend(["", "## Практический вывод", ""])
-    lines.append(
-        "Проверьте зависимости от внешних сервисов, резервные сценарии доступа, "
-        "политику хранения данных и наблюдаемость критичных инструментов.",
-    )
     output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
     return output_path
 
@@ -68,6 +63,7 @@ def write_episode_metadata(
     llm_model: str | None = None,
     tts_provider: str | None = None,
     background_music: bool | None = None,
+    research_sources: dict[int, list[dict[str, str]]] | None = None,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     duration_seconds = _audio_duration_seconds(audio_report_path)
@@ -79,7 +75,7 @@ def write_episode_metadata(
         "duration": _format_duration(duration_seconds) if duration_seconds else None,
         "audio_path": str(audio_path) if audio_path else None,
         "topics": _episode_topics(digest_items),
-        "characters": ["mark", "gleb", "nika", "artem"],
+        "characters": get_active_character_keys(),
         "sources": [
             {
                 "source": item.source,
@@ -87,6 +83,11 @@ def write_episode_metadata(
                 "url": item.url,
                 "message_date": item.message_date.isoformat() if item.message_date else None,
                 "summary": _short_topic(item.text),
+                "supporting_sources": [
+                    {"url": source["url"], "title": source["title"]}
+                    for source in (research_sources or {}).get(item.post_id, [])
+                    if source.get("status") == "fetched"
+                ],
             }
             for item in digest_items
         ],
@@ -134,52 +135,16 @@ def _audio_duration_seconds(audio_report_path: Path | None) -> float | None:
 
 
 def _episode_topics(digest_items: list[DigestItem]) -> list[str]:
-    topics = []
-    seen = set()
-    for item in digest_items:
-        for topic in detect_topics(item.text):
-            if topic in seen:
-                continue
-            seen.add(topic)
-            topics.append(topic)
-    return topics
+    return list(dict.fromkeys(_short_topic(item.text) for item in digest_items))
 
 
 def _description(digest_items: list[DigestItem]) -> str:
-    if not digest_items:
-        return "НикКаст с обзором главных новостей в мире айти."
-    topics = "; ".join(_short_topic(item.text) for item in digest_items[:3])
-    return f"НикКаст с обзором главных IT-новостей: {topics}."
+    return f"{settings.podcast_title}: обсуждение выбранных новостей. Источники указаны в описании."
 
 
-def _short_topic(text: str, max_chars: int = 110) -> str:
-    clean_text = " ".join(text.replace("\n", " ").split())
-    clean_text = clean_text.strip(" -—")
-    clean_text = _cut_topic_title(clean_text)
-    if len(clean_text) <= max_chars:
-        return clean_text
-    return _drop_truncated_topic_tail(clean_text[:max_chars].rsplit(" ", 1)[0].strip())
-
-
-def _cut_topic_title(text: str) -> str:
-    text = re.split(r"\s+(?:Старт продаж|Продажи)\b", text, maxsplit=1, flags=re.IGNORECASE)[0]
-    match = re.search(r"\s+[—–-]\s+|[.:?!…]+(?:\s+|$)", text)
-    if match:
-        text = text[: match.start()]
-    return _drop_truncated_topic_tail(text.strip(" .,:;!?—-"))
-
-
-def _drop_truncated_topic_tail(text: str) -> str:
-    fragments = {
-        "заплан",
-        "экс",
-        "официальных",
-        "производител",
-    }
-    words = text.split()
-    while words and words[-1].casefold().replace("ё", "е").strip(".,:;!?—-") in fragments:
-        words.pop()
-    return " ".join(words).strip(" .,:;!?—-")
+def _short_topic(text: str, max_chars: int | None = None) -> str:
+    # All qualifiers are part of the source, even on later physical lines.
+    return " ".join(text.split())
 
 
 def _format_duration(duration_seconds: float | int) -> str:
@@ -189,3 +154,83 @@ def _format_duration(duration_seconds: float | int) -> str:
     if hours:
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     return f"{minutes:02d}:{seconds:02d}"
+
+
+def refresh_rendered_package(
+    path: Path, *, provider: str | None, with_music: bool, music_volume: float
+) -> None:
+    """Refresh publication files after rendering an existing source snapshot."""
+    from datetime import datetime, timezone
+
+    def read_object(filename: str) -> dict:
+        file = path / filename
+        if not file.exists():
+            return {}
+        value = json.loads(file.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError(f"Invalid package object: {filename}")
+        return value
+
+    metadata = read_object("metadata.json")
+    generation = read_object("script_generation.json")
+    sources = read_object("source_research.json")
+    selected = json.loads((path / "selected_posts.json").read_text(encoding="utf-8"))
+    items = [
+        DigestItem(**{**item, "message_date": datetime.fromisoformat(item["message_date"])})
+        for item in selected
+    ]
+    metadata.setdefault("title", path.name)
+    metadata.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+    provider = provider or metadata.get("tts_provider")
+    metadata.update(
+        posts_count=len(items),
+        post_ids=[item.post_id for item in items],
+        tts_provider=provider,
+        background_music=with_music,
+        background_music_volume=music_volume if with_music else None,
+        audio_rendered_at=datetime.now(timezone.utc).isoformat(),
+    )
+    files = metadata.setdefault("files", {})
+    for key, value in files.items():
+        if isinstance(value, str) and (path / Path(value).name).is_file():
+            files[key] = str(path / Path(value).name)
+    files.update(
+        {
+            "audio_mp3": str(path / "audio.mp3"),
+            "audio_wav": str(path / "audio.wav"),
+            "audio_voice_wav": str(path / "audio_voice.wav")
+            if (path / "audio_voice.wav").exists()
+            else None,
+            "audio_report": str(path / "audio_report.json"),
+            "llm_script": str(path / "llm_script.md"),
+        }
+    )
+    for name in ("spoken_script.md", "speech_pronunciation.json"):
+        if (path / name).exists():
+            files[Path(name).stem] = str(path / name)
+    model = (
+        generation.get("model")
+        or metadata.get("llm_script_generation_model")
+        or metadata.get("llm_model")
+    )
+    write_show_notes(
+        title=metadata["title"],
+        digest_items=items,
+        output_path=path / "show_notes.md",
+        audio_report_path=path / "audio_report.json",
+    )
+    write_episode_metadata(
+        title=metadata["title"],
+        created_at=metadata["created_at"],
+        digest_items=items,
+        output_path=path / "episode_metadata.json",
+        audio_path=path / "audio.mp3",
+        audio_report_path=path / "audio_report.json",
+        llm_model=model,
+        tts_provider=provider,
+        background_music=with_music,
+        research_sources={int(key): value for key, value in sources.items()},
+    )
+    (path / "metadata.json").write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
+    )

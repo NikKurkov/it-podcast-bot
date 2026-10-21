@@ -7,14 +7,8 @@ class CharacterProfile:
     name: str
     gender: str
     role: str
-    short_description: str
-    personality: str
-    dialogue_function: list[str]
     speech_style: str
-    catchphrases: list[str]
-    default_tts_provider: str
     default_voice: str
-    speaking_rate: str
     pause_after_ms: int
 
 
@@ -23,128 +17,44 @@ CHARACTER_PROFILES: dict[str, CharacterProfile] = {
         key="mark",
         name="Марк",
         gender="мужской",
-        role="Следователь / ведущий-аналитик",
-        short_description=(
-            "Ведёт выпуск как расследование, собирает факты, задаёт структуру "
-            "и возвращает разговор к главной линии."
-        ),
-        personality="Спокойный, собранный, интригующий, с лёгким драматизмом.",
-        dialogue_function=[
-            "открывает выпуск",
-            "формулирует главный вопрос",
-            "восстанавливает цепочку событий",
-            "иногда просит другого ведущего выбрать или добить тему",
-            "подводит промежуточные итоги",
-            "делает финальный вывод",
-        ],
-        speech_style="Спокойно, собранно, интригующе, с лёгким драматизмом.",
-        catchphrases=[
-            "Давайте восстановим цепочку событий.",
-            "На первый взгляд это обычный релиз, но дальше начинается самое интересное.",
-            "Вопрос не в том, что произошло. Вопрос — почему это стало возможным.",
-        ],
-        default_tts_provider="silero",
+        role="Любопытный ведущий и собеседник",
+        speech_style="Любопытен к новому, быстро замечает необычную деталь и задаёт содержательный вопрос. Разговорно и ясно связывает мысли, умеет уступить инициативу и изменить мнение.",
         default_voice="eugene",
-        speaking_rate="normal",
         pause_after_ms=650,
     ),
     "gleb": CharacterProfile(
         key="gleb",
         name="Глеб",
         gender="мужской",
-        role="Старый Хакер",
-        short_description=(
-            "Опытный, циничный и саркастичный инженер. Помнит, что это уже было, "
-            "видит слабые места и не верит в хайп."
-        ),
-        personality="Сухой юмор, инженерный скепсис, ворчит редко, но по делу.",
-        dialogue_function=[
-            "снижает градус хайпа",
-            "сравнивает новости с прошлыми технологическими циклами",
-            "показывает типичные инженерные ловушки",
-            "может начать тему с ворчливого, но точного наблюдения",
-            "добавляет сарказм и живость",
-        ],
-        speech_style="Сухой юмор, инженерный скепсис, иногда ворчит, но не токсичен.",
-        catchphrases=[
-            "Это не революция. Это старый паттерн, которому прикрутили красивый лендинг.",
-            "Звучит отлично. Осталось понять, кто будет чинить это в три ночи.",
-            "Я такое уже видел. Тогда оно называлось иначе и тоже падало.",
-        ],
-        default_tts_provider="silero",
+        role="Опытный инженер с сухим юмором",
+        speech_style="Смотрит на доказательства и последствия для эксплуатации. Любит простые работающие решения, способен увлечься хорошей идеей и признать чужую правоту. Сухой, доброжелательный юмор.",
         default_voice="aidar",
-        speaking_rate="slightly_slow",
         pause_after_ms=750,
     ),
     "nika": CharacterProfile(
         key="nika",
         name="Ника",
         gender="женский",
-        role="Деврел / объясняющая ведущая",
-        short_description=(
-            "Живая, остроумная и дружелюбная ведущая. Объясняет сложное человеческим "
-            "языком и задаёт простые, но важные вопросы."
-        ),
-        personality="Энергичная, весёлая, с самоиронией, но без клоунады.",
-        dialogue_function=[
-            "задаёт простые вопросы без повторения одного шаблона",
-            "помогает объяснять сложные вещи",
-            "иногда перебивает, когда слышит важную практическую деталь",
-            "делает переходы легче",
-            "добавляет юмор",
-            "проверяет практический смысл для обычного разработчика",
-        ],
-        speech_style="Энергично, весело, дружелюбно, с самоиронией.",
-        catchphrases=[
-            "То есть если перевести с инженерного на человеческий…",
-            "Подождите, а мне завтра на работе это поможет или просто добавит ещё один YAML?",
-            "Люблю новости, после которых надо обновлять не только зависимости, но и мировоззрение.",
-        ],
-        default_tts_provider="silero",
+        role="Практичный разработчик и внимательная собеседница",
+        speech_style="Тёплая, остроумная и компетентная. Замечает, как решение повлияет на работу и привычки людей. Задаёт точные вопросы, сама объясняет детали и подхватывает удачную шутку.",
         default_voice="xenia",
-        speaking_rate="slightly_fast",
         pause_after_ms=450,
     ),
     "artem": CharacterProfile(
         key="artem",
         name="Артём",
         gender="мужской",
-        role="Архитектор",
-        short_description=(
-            "Системный инженер. Видит архитектуру, инфраструктуру, безопасность, "
-            "эксплуатацию, стоимость поддержки и последствия для production."
-        ),
-        personality="Спокойный, глубокий, точный, без лишней драмы.",
-        dialogue_function=[
-            "объясняет техническую механику",
-            "говорит про архитектурные последствия",
-            "отмечает риски безопасности и эксплуатации",
-            "может первым вводить тему, если новость начинается с технического механизма",
-            "переводит новость в практические выводы для команд",
-        ],
-        speech_style="Спокойно, глубоко, точно, без лекций на десять абзацев.",
-        catchphrases=[
-            "Главный вопрос не в том, можно ли это запустить. Главный вопрос — кто будет это поддерживать через полгода.",
-            "Технически проблема не в самой модели, а в цепочке поставки вокруг неё.",
-            "В продакшене это упирается в наблюдаемость, воспроизводимость и контроль доступа.",
-        ],
-        default_tts_provider="silero",
+        role="Инженер, объясняющий устройство систем",
+        speech_style="Спокойный и конкретный. Задумывается над устройством системы и подхватывает вопрос собеседника. Раскрывает причинную связь или уместный условный пример, умеет кратко возразить.",
         default_voice="aidar",
-        speaking_rate="slow",
         pause_after_ms=800,
     ),
 }
 
 _ALIASES = {
-    "mark": "mark",
-    "марк": "mark",
-    "gleb": "gleb",
-    "глеб": "gleb",
-    "nika": "nika",
-    "ника": "nika",
-    "artem": "artem",
-    "артем": "artem",
-    "артём": "artem",
+    value.casefold().replace("ё", "е"): profile.key
+    for profile in CHARACTER_PROFILES.values()
+    for value in (profile.key, profile.name)
 }
 
 
@@ -170,38 +80,23 @@ def get_character_keys() -> list[str]:
     return list(CHARACTER_PROFILES)
 
 
-def format_character_profiles_for_prompt() -> str:
-    blocks = []
-    for profile in get_all_character_profiles():
-        dialogue_lines = "\n".join(f"- {item}" for item in profile.dialogue_function)
-        blocks.append(
-            "\n".join(
-                [
-                    f"{profile.name} — {profile.role}.",
-                    f"Ключ персонажа: {profile.key}",
-                    f"Грамматический род в репликах от первого лица: {profile.gender}.",
-                    f"Суть: {profile.short_description}",
-                    f"Характер: {profile.personality}",
-                    f"Стиль: {profile.speech_style}",
-                    "Функция в диалоге:",
-                    dialogue_lines,
-                    (
-                        "Важно: фирменные фразы персонажа хранятся только как "
-                        "ориентир интонации. Не используй их дословно в сценарии."
-                    ),
-                    (
-                        "Живой диалог: персонаж может обращаться к другим ведущим "
-                        "по именам, перебивать коротким уточнением и реагировать "
-                        "на предыдущую реплику, если это помогает теме."
-                    ),
-                    (
-                        "Согласование: если персонаж говорит о себе в прошедшем времени "
-                        "или условном наклонении, используй его грамматический род. "
-                        "Марк, Глеб и Артём говорят «я бы перевёл», «я спросил»; "
-                        "Ника говорит «я бы перевела», «я спросила»."
-                    ),
-                ],
-            ),
-        )
+def get_active_character_keys() -> list[str]:
+    from app.config.settings import settings
 
-    return "\n\n".join(blocks)
+    if settings.podcast_participants is None:
+        return get_character_keys()
+    keys = [
+        resolve_character_key(value)
+        for value in settings.podcast_participants.split(",")
+        if value.strip()
+    ]
+    if not keys:
+        raise ValueError("Configure at least one known podcast participant.")
+    return list(dict.fromkeys(keys))
+
+
+def format_character_profiles_for_prompt() -> str:
+    return "\n".join(
+        f"{profile.key}: {profile.name}; род: {profile.gender}; {profile.role}; {profile.speech_style}"
+        for profile in (CHARACTER_PROFILES[key] for key in get_active_character_keys())
+    )

@@ -68,6 +68,8 @@ def mix_background_music(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with_music_path = music_path or output_path.with_name(f"{output_path.stem}_music_bed.wav")
+    if music_path is not None and not music_path.is_file():
+        raise FileNotFoundError(f"Music audio does not exist: {music_path}")
     if not with_music_path.exists():
         duration = get_audio_duration_seconds(voice_path)
         generate_chill_background_music(
@@ -89,8 +91,8 @@ def mix_background_music(
             "-filter_complex",
             (
                 f"[1:a]volume={music_volume:.4f}[music];"
-                "[0:a][music]amix=inputs=2:duration=first:dropout_transition=0,"
-                "alimiter=limit=0.95[aout]"
+                "[0:a][music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
+                "alimiter=limit=0.95:level=0[aout]"
             ),
             "-map",
             "[aout]",

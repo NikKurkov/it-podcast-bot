@@ -9,9 +9,6 @@ from app.audio.pronunciation import apply_pronunciation_map
 
 logger = logging.getLogger(__name__)
 
-SILERO_RU_MODEL = "v4_ru"
-SUPPORTED_SILERO_SPEAKERS = {"aidar", "baya", "kseniya", "xenia", "eugene"}
-
 
 class SileroTTSProvider(BaseTTSProvider):
     def __init__(self, device: str | None = None) -> None:
@@ -40,14 +37,14 @@ class SileroTTSProvider(BaseTTSProvider):
         output_path: Path,
         sample_rate: int,
     ) -> Path:
-        if speaker not in SUPPORTED_SILERO_SPEAKERS:
+        model = self._get_model()
+        if speaker not in model.speakers:
             raise ValueError(
                 f"Unsupported Silero speaker: {speaker}. "
-                f"Supported speakers: {', '.join(sorted(SUPPORTED_SILERO_SPEAKERS))}",
+                f"Supported speakers: {', '.join(sorted(model.speakers))}",
             )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        model = self._get_model()
         prepared_text = prepare_silero_text(text)
         logger.info("Generating Silero TTS: speaker=%s, output=%s", speaker, output_path)
         model.save_wav(
@@ -64,6 +61,12 @@ class SileroTTSProvider(BaseTTSProvider):
         if self._model is not None:
             return self._model
 
+        package = (
+            Path(settings.silero_model_path).expanduser() if settings.silero_model_path else None
+        )
+        if package is not None and not package.is_file():
+            raise RuntimeError("Configured local Silero model package is missing.")
+
         try:
             import torch
         except ImportError as exc:
@@ -74,14 +77,21 @@ class SileroTTSProvider(BaseTTSProvider):
             ) from exc
 
         try:
-            logger.info("Loading Silero TTS model %s on %s", SILERO_RU_MODEL, self.device)
-            model, _ = torch.hub.load(
-                repo_or_dir="snakers4/silero-models",
-                model="silero_tts",
-                language="ru",
-                speaker=SILERO_RU_MODEL,
-                trust_repo=True,
-            )
+            if self.device == "cpu":
+                torch.set_num_threads(settings.tts_cpu_threads)
+            logger.info("Loading Silero TTS model %s on %s", settings.silero_model_id, self.device)
+            if package is not None:
+                model = torch.package.PackageImporter(str(package)).load_pickle(
+                    "tts_models", "model"
+                )
+            else:
+                model, _ = torch.hub.load(
+                    repo_or_dir="snakers4/silero-models",
+                    model="silero_tts",
+                    language="ru",
+                    speaker=settings.silero_model_id,
+                    trust_repo=True,
+                )
             model.to(self.device)
         except Exception as exc:
             raise RuntimeError(f"Failed to load Silero TTS model: {exc}") from exc

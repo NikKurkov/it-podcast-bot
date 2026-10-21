@@ -2,10 +2,13 @@
 *.session
 *.session-journal
 data/*.sqlite3
+data/*.sqlite3-*
 data/*.db
+data/*.db-*
 data/sessions/
 data/backups/
 data/logs/*.log
+data/logs/*.json
 data/episodes/**
 data/raw/*.csv
 data/audio/**/*.wav
@@ -19,3 +22,10 @@ __pycache__/
 venv/
 .idea/
 .vscode/
+
+# Local review/listening artifacts and process locks
+data/demos/
+data/logs/*.lock
+.ruff_cache/
+data/runtime/
+data/models/

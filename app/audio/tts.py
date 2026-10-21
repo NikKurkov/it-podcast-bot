@@ -7,7 +7,6 @@ from pathlib import Path
 from app.audio.models import DialogueLine, RenderedLine
 from app.audio.postprocess import process_voice_audio
 from app.audio.providers.base import BaseTTSProvider
-from app.audio.providers.piper import PiperTTSProvider
 from app.audio.providers.silero import SileroTTSProvider
 from app.audio.providers.xtts import XTTSTTSProvider
 from app.audio.voices import get_voice_config
@@ -23,12 +22,10 @@ def get_tts_provider(provider_name: str) -> BaseTTSProvider:
 
     if normalized_name == "silero":
         provider: BaseTTSProvider = SileroTTSProvider()
-    elif normalized_name == "piper":
-        provider = PiperTTSProvider()
     elif normalized_name == "xtts":
         provider = XTTSTTSProvider()
     else:
-        raise ValueError("Unknown TTS provider: " f"{provider_name}. Supported: silero, piper, xtts")
+        raise ValueError(f"Unknown TTS provider: {provider_name}. Supported: silero, xtts")
 
     _PROVIDER_CACHE[normalized_name] = provider
     return provider
@@ -39,6 +36,7 @@ async def synthesize_dialogue_lines(
     output_dir: Path,
     provider_name: str | None = None,
 ) -> list[RenderedLine]:
+    """Render lines prepared by prepare_dialogue_speech, retaining their order."""
     output_dir.mkdir(parents=True, exist_ok=True)
     rendered_lines: list[RenderedLine] = []
 
@@ -89,7 +87,9 @@ def synthesize_with_espeak(
     if not speakable_text:
         raise RuntimeError("No speakable text found.")
 
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as text_file:
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", suffix=".txt", delete=False
+    ) as text_file:
         text_file.write(speakable_text)
         text_path = Path(text_file.name)
 

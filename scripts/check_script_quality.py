@@ -7,6 +7,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.pipeline.episode_paths import resolve_episode_path
+
 from app.podcast.script_quality import (
     build_script_quality_report,
     ensure_opening_and_rundown,
@@ -18,8 +20,12 @@ from app.podcast.script_quality import (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check dialogue script quality before TTS.")
     parser.add_argument("--episode", default="latest", help="Episode directory or `latest`.")
-    parser.add_argument("--fix", action="store_true", help="Write deterministic opening/rundown fixes.")
-    parser.add_argument("--strict", action="store_true", help="Exit non-zero if TTS quality gate fails.")
+    parser.add_argument(
+        "--fix", action="store_true", help="Write deterministic opening/rundown fixes."
+    )
+    parser.add_argument(
+        "--strict", action="store_true", help="Exit non-zero if TTS quality gate fails."
+    )
     return parser.parse_args()
 
 
@@ -45,8 +51,6 @@ def main() -> None:
 
     print(f"Script quality report: {report_path}")
     print(f"  lines: {report['lines_count']}")
-    print(f"  opening: {report['opening_present']}")
-    print(f"  rundown: {report['rundown_present']}")
     print(f"  transitions: {report['transition_lines']}")
     print(f"  warnings: {', '.join(report['warnings']) if report['warnings'] else 'none'}")
     print(f"  tts_ready: {allowed}")
@@ -57,15 +61,7 @@ def main() -> None:
 
 
 def _resolve_episode_path(value: str) -> Path:
-    if value != "latest":
-        path = Path(value)
-        return path if path.is_absolute() else PROJECT_ROOT / path
-
-    episodes_dir = PROJECT_ROOT / "data" / "episodes"
-    candidates = [path for path in episodes_dir.iterdir() if path.is_dir()]
-    if not candidates:
-        raise SystemExit("No episode packages found in data/episodes.")
-    return max(candidates, key=lambda path: path.stat().st_mtime)
+    return resolve_episode_path(value, PROJECT_ROOT)
 
 
 def _topic_summaries(path: Path) -> list[str]:
