@@ -74,3 +74,9 @@ def test_get_voice_config_xtts_falls_back_to_character_key(monkeypatch) -> None:
 
     assert config["provider"] == "xtts"
     assert config["speaker"] == "nika"
+
+
+@pytest.mark.parametrize("provider", ["unknown", "piper", "espeak"])
+def test_dialogue_provider_never_silently_falls_back(provider):
+    with pytest.raises(ValueError, match="Unsupported dialogue TTS provider"):
+        get_voice_config("mark", provider_name=provider)

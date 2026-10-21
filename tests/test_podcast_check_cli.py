@@ -46,10 +46,12 @@ def test_podcast_check_strict_exits_for_bad_episode(tmp_path: Path, monkeypatch,
     episode_path.mkdir()
     (episode_path / "selected_posts.json").write_text("[]", encoding="utf-8")
     (episode_path / "llm_script.md").write_text(
-        "mark: Слишком коротко.\n",
+        "unknown: Некорректный диктор.\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(sys, "argv", ["podcast_check.py", "--episode", str(episode_path), "--strict"])
+    monkeypatch.setattr(
+        sys, "argv", ["podcast_check.py", "--episode", str(episode_path), "--strict"]
+    )
 
     with pytest.raises(SystemExit) as exc_info:
         podcast_check.main()

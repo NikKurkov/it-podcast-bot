@@ -1,51 +1,13 @@
 import asyncio
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
 from app.config.settings import settings
 from app.audio.providers.base import BaseTTSProvider
+from app.audio.pronunciation import apply_pronunciation_map
 
 logger = logging.getLogger(__name__)
-
-SILERO_RU_MODEL = "v4_ru"
-SUPPORTED_SILERO_SPEAKERS = {"aidar", "baya", "kseniya", "xenia", "eugene"}
-
-_ENGLISH_TTS_REPLACEMENTS = {
-    "ChatGPT": "чат-джи-пи-ти",
-    "OpenAI": "оупен-эй-ай",
-    "GitHub": "гитхаб",
-    "GitLab": "гитлаб",
-    "YouTube": "ютуб",
-    "Google": "гугл",
-    "Microsoft": "майкрософт",
-    "Apple": "эпл",
-    "Android": "андроид",
-    "iOS": "ай-о-эс",
-    "Claude": "клод",
-    "Discord": "дискорд",
-    "Docker": "докер",
-    "Kubernetes": "кубернетис",
-    "JavaScript": "джаваскрипт",
-    "TypeScript": "тайпскрипт",
-    "Python": "пайтон",
-    "Linux": "линукс",
-    "Windows": "виндоус",
-    "Full HD": "фул-эйч-ди",
-    "API": "эй-пи-ай",
-    "SDK": "эс-ди-кей",
-    "CLI": "си-эл-ай",
-    "CPU": "си-пи-ю",
-    "GPU": "джи-пи-ю",
-    "LLM": "эл-эл-эм",
-    "GPT": "джи-пи-ти",
-    "HTML": "эйч-ти-эм-эл",
-    "CSS": "си-эс-эс",
-    "SQL": "эс-кью-эл",
-    "JSON": "джейсон",
-    "YAML": "ямл",
-}
 
 
 class SileroTTSProvider(BaseTTSProvider):
@@ -75,14 +37,14 @@ class SileroTTSProvider(BaseTTSProvider):
         output_path: Path,
         sample_rate: int,
     ) -> Path:
-        if speaker not in SUPPORTED_SILERO_SPEAKERS:
+        model = self._get_model()
+        if speaker not in model.speakers:
             raise ValueError(
                 f"Unsupported Silero speaker: {speaker}. "
-                f"Supported speakers: {', '.join(sorted(SUPPORTED_SILERO_SPEAKERS))}",
+                f"Supported speakers: {', '.join(sorted(model.speakers))}",
             )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        model = self._get_model()
         prepared_text = prepare_silero_text(text)
         logger.info("Generating Silero TTS: speaker=%s, output=%s", speaker, output_path)
         model.save_wav(
@@ -99,6 +61,12 @@ class SileroTTSProvider(BaseTTSProvider):
         if self._model is not None:
             return self._model
 
+        package = (
+            Path(settings.silero_model_path).expanduser() if settings.silero_model_path else None
+        )
+        if package is not None and not package.is_file():
+            raise RuntimeError("Configured local Silero model package is missing.")
+
         try:
             import torch
         except ImportError as exc:
@@ -109,14 +77,21 @@ class SileroTTSProvider(BaseTTSProvider):
             ) from exc
 
         try:
-            logger.info("Loading Silero TTS model %s on %s", SILERO_RU_MODEL, self.device)
-            model, _ = torch.hub.load(
-                repo_or_dir="snakers4/silero-models",
-                model="silero_tts",
-                language="ru",
-                speaker=SILERO_RU_MODEL,
-                trust_repo=True,
-            )
+            if self.device == "cpu":
+                torch.set_num_threads(settings.tts_cpu_threads)
+            logger.info("Loading Silero TTS model %s on %s", settings.silero_model_id, self.device)
+            if package is not None:
+                model = torch.package.PackageImporter(str(package)).load_pickle(
+                    "tts_models", "model"
+                )
+            else:
+                model, _ = torch.hub.load(
+                    repo_or_dir="snakers4/silero-models",
+                    model="silero_tts",
+                    language="ru",
+                    speaker=settings.silero_model_id,
+                    trust_repo=True,
+                )
             model.to(self.device)
         except Exception as exc:
             raise RuntimeError(f"Failed to load Silero TTS model: {exc}") from exc
@@ -126,15 +101,4 @@ class SileroTTSProvider(BaseTTSProvider):
 
 
 def prepare_silero_text(text: str) -> str:
-    result = text
-    for source, replacement in sorted(
-        _ENGLISH_TTS_REPLACEMENTS.items(),
-        key=lambda item: len(item[0]),
-        reverse=True,
-    ):
-        pattern = re.compile(
-            rf"(?<![A-Za-zА-Яа-яЁё]){re.escape(source)}(?![A-Za-zА-Яа-яЁё])",
-            flags=re.IGNORECASE,
-        )
-        result = pattern.sub(replacement, result)
-    return result
+    return apply_pronunciation_map(text)

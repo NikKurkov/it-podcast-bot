@@ -26,15 +26,21 @@ def test_build_service_unit_waits_for_proxy_and_llm() -> None:
     )
 
     assert "WorkingDirectory=/repo" in service
-    assert "Environment=TTS_PROVIDER=xtts" in service
-    assert "Wants=network-online.target it-podcast-bot-proxy.service it-podcast-bot-ollama.service" in service
-    assert "After=network-online.target it-podcast-bot-proxy.service it-podcast-bot-ollama.service" in service
+    assert "Environment=TTS_PROVIDER=" not in service
+    assert (
+        "Wants=network-online.target it-podcast-bot-proxy.service it-podcast-bot-ollama.service"
+        in service
+    )
+    assert (
+        "After=network-online.target it-podcast-bot-proxy.service it-podcast-bot-ollama.service"
+        in service
+    )
     assert "Requires=it-podcast-bot-ollama.service" in service
     assert "wait_for_tcp.py 127.0.0.1 2080 --timeout 900" in service
     assert "wait_for_tcp.py localhost 11434 --timeout 120" in service
     assert "Restart=on-failure" in service
     assert "RestartSec=15min" in service
-    assert "make_podcast.py --with-music --tts-provider xtts --publish" in service
+    assert "make_podcast.py --with-music --publish" in service
     assert "scheduled_podcast.log" in service
 
 
@@ -72,12 +78,14 @@ def test_build_proxy_service_unit_restarts_proxy() -> None:
     assert "WantedBy=default.target" in service
 
 
-def test_build_ollama_service_unit_runs_project_cpu_server() -> None:
+def test_build_ollama_service_unit_runs_bounded_project_server() -> None:
     service = build_ollama_service_unit(Path("/repo"))
 
-    assert "Description=Ollama CPU server for it-podcast-bot" in service
+    assert "Description=Local model server for it-podcast-bot" in service
     assert "WorkingDirectory=/repo" in service
-    assert "StopWhenUnneeded=yes" in service
-    assert "ExecStart=/usr/bin/bash /repo/scripts/serve_ollama_cpu.sh" in service
+    assert "StopWhenUnneeded=yes" not in service
+    assert (
+        "ExecStart=/repo/.venv/bin/python /repo/scripts/start_llm_server.py --foreground" in service
+    )
     assert "Restart=on-failure" in service
     assert "WantedBy=default.target" in service

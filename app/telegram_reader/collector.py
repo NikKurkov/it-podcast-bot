@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime
 from typing import Any
 
 from telethon.errors import RPCError
@@ -9,7 +10,7 @@ from app.db.repositories.posts import save_or_update_post
 from app.db.repositories.sources import get_or_create_source
 from app.db.session import SessionLocal, init_db
 from app.telegram_reader.channels import get_channels
-from app.telegram_reader.client import create_telegram_client
+from app.telegram_reader.client import create_telegram_client, telegram_session
 from app.utils.dates import ensure_utc
 from app.utils.text import is_meaningful_text, normalize_text
 
@@ -33,11 +34,22 @@ def _message_to_raw_json(message: Any) -> str | None:
 async def collect_latest_posts(
     limit_per_channel: int | None = None,
     channels: list[str] | None = None,
+    interactive: bool = True,
+    since: datetime | None = None,
 ) -> dict[str, int]:
+    limit = (
+        limit_per_channel
+        if limit_per_channel is not None
+        else (0 if since else settings.default_limit_per_channel)
+    )
+    if limit < 0:
+        raise ValueError("Collection limit cannot be negative.")
+    if limit == 0 and since is None:
+        raise ValueError("Unbounded collection requires a date cutoff.")
+    limit = limit or None
+    cutoff = ensure_utc(since) if since else None
     init_db()
-
     channels = channels or get_channels()
-    limit = limit_per_channel or settings.default_limit_per_channel
     stats = {
         "channels_total": len(channels),
         "channels_ok": 0,
@@ -51,7 +63,7 @@ async def collect_latest_posts(
 
     client = create_telegram_client()
 
-    async with client:
+    async with telegram_session(client, interactive=interactive):
         for channel_username in channels:
             channel_seen = 0
             channel_saved = 0
@@ -67,6 +79,8 @@ async def collect_latest_posts(
                     source = get_or_create_source(session, channel_username, title=title)
 
                     async for message in client.iter_messages(entity, limit=limit):
+                        if cutoff and ensure_utc(message.date) < cutoff:
+                            break
                         channel_seen += 1
                         stats["posts_seen"] += 1
 

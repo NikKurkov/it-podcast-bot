@@ -12,19 +12,29 @@ from app.audio.dialogue import script_to_dialogue_lines
 from app.audio.music import mix_background_music
 from app.audio.tts import convert_wav_to_mp3, synthesize_dialogue_lines, synthesize_with_espeak
 from app.config.settings import settings
+from app.llm.pronunciation import prepare_dialogue_speech
+from app.llm.runtime import release_local_models
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create local TTS audio from a script markdown file.")
+    parser = argparse.ArgumentParser(
+        description="Create local TTS audio from a script markdown file."
+    )
     parser.add_argument("--input", default="data/episodes/latest_llm_script.md")
     parser.add_argument("--wav-output", default="data/audio/latest_episode.wav")
     parser.add_argument("--mp3-output", default="data/audio/latest_episode.mp3")
     parser.add_argument("--lines-dir", default="data/audio/latest_episode_lines")
-    parser.add_argument("--provider", choices=("silero", "xtts", "espeak"), default=settings.tts_provider)
+    parser.add_argument(
+        "--provider", choices=("silero", "xtts", "espeak"), default=settings.tts_provider
+    )
     parser.add_argument("--voice", default=settings.tts_voice)
     parser.add_argument("--speed", type=int, default=settings.tts_speed)
-    parser.add_argument("--with-music", action="store_true", default=settings.audio_background_music)
-    parser.add_argument("--music-volume", type=float, default=settings.audio_background_music_volume)
+    parser.add_argument(
+        "--with-music", action="store_true", default=settings.audio_background_music
+    )
+    parser.add_argument(
+        "--music-volume", type=float, default=settings.audio_background_music_volume
+    )
     parser.add_argument("--music-path", default=settings.audio_background_music_path)
     parser.add_argument("--no-mp3", action="store_true")
     return parser.parse_args()
@@ -42,6 +52,12 @@ def main() -> None:
         if not dialogue_lines:
             raise SystemExit("No speakable dialogue lines found.")
 
+        dialogue_lines = prepare_dialogue_speech(
+            dialogue_lines,
+            Path(args.lines_dir) / "speech_pronunciation.json",
+        )
+        if settings.llm_release_before_tts:
+            release_local_models()
         rendered_lines = asyncio.run(
             synthesize_dialogue_lines(
                 dialogue_lines,
@@ -53,6 +69,7 @@ def main() -> None:
             rendered_lines,
             Path(args.wav_output),
             pauses_ms=[line.pause_after_ms for line in dialogue_lines],
+            sample_rate=settings.tts_sample_rate,
         )
         print(f"Saved WAV audio to {wav_path}")
         print(f"Rendered {len(rendered_lines)} {args.provider} dialogue lines to {args.lines_dir}")

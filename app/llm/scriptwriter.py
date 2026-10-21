@@ -1,15 +1,23 @@
 from pathlib import Path
+import json
+import logging
 import re
 
+
 from app.config.settings import settings
+from app.llm.artifacts import fingerprint, generation_settings, load_checkpoint, save_checkpoint
 from app.llm.client import create_llm_client
+from app.llm.context_budget import estimate_tokens, output_token_budget
 from app.podcast.prompt_context import build_scriptwriter_context
+from app.podcast.characters import get_active_character_keys
 from app.podcast.script_validation import (
     ScriptValidationResult,
     format_validation_report,
     repair_dialogue_script_text,
     validate_dialogue_script,
 )
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_SYSTEM_PROMPT = """Ты сценарист русскоязычного IT-подкаста.
@@ -20,7 +28,7 @@ DEFAULT_SYSTEM_PROMPT = """Ты сценарист русскоязычного 
 - сохраняй смысл исходных новостей;
 - убирай рекламный шум, если он не важен для истории;
 - пиши разговорно, но без кликбейта;
-- делай структуру: intro, основные новости, короткие новости, outro;
+- выбирай ход беседы по содержанию, без обязательной схемы для каждой темы;
 - добавляй плавные переходы между новостями;
 - если данных мало, честно оставляй формулировку осторожной.
 """
@@ -32,21 +40,52 @@ def rewrite_script_draft(
     system_prompt: str | None = None,
     temperature: float = 0.4,
     max_tokens: int | None = None,
+    response_format: dict | None = None,
+    response_path: Path | None = None,
+    reasoning_effort: str | None = None,
 ) -> str:
-    client = create_llm_client()
-    request_kwargs = {}
-    if max_tokens is not None:
-        request_kwargs["max_tokens"] = max_tokens
-    response = client.chat.completions.create(
-        model=model or settings.llm_model,
-        messages=[
-            {"role": "system", "content": system_prompt or _load_system_prompt()},
-            {"role": "user", "content": draft_text},
-        ],
-        temperature=temperature,
-        timeout=settings.llm_request_timeout_seconds,
-        **request_kwargs,
+    if settings.local_llm_engine == "llamacpp" and model and model != settings.llm_model:
+        raise ValueError("The native single-model server requires its configured LLM_MODEL alias.")
+    resolved_prompt = system_prompt or _load_system_prompt()
+    input_tokens = estimate_tokens(
+        resolved_prompt + draft_text + (str(response_format) if response_format else "")
     )
+    available_output = settings.ollama_context_length - input_tokens
+    if available_output <= 0:
+        raise ValueError(
+            "Complete material exceeds model context. Increase OLLAMA_CONTEXT_LENGTH; source was not truncated."
+        )
+    request_kwargs = {
+        "max_tokens": min(
+            output_token_budget(max_tokens or 2048, reasoning_effort=reasoning_effort),
+            available_output,
+        )
+    }
+    if response_format is not None:
+        request_kwargs["response_format"] = response_format
+    effective_effort = (
+        reasoning_effort if reasoning_effort is not None else settings.llm_reasoning_effort
+    )
+    if effective_effort and effective_effort.strip():
+        request_kwargs["reasoning_effort"] = effective_effort.strip()
+    with create_llm_client() as client:
+        response = client.chat.completions.create(
+            model=model or settings.llm_model,
+            messages=[
+                {"role": "system", "content": resolved_prompt},
+                {"role": "user", "content": draft_text},
+            ],
+            temperature=temperature,
+            timeout=settings.llm_request_timeout_seconds,
+            **request_kwargs,
+        )
+    if response_path is not None:
+        response_path.parent.mkdir(parents=True, exist_ok=True)
+        response_path.write_text(response.choices[0].message.content or "", encoding="utf-8")
+    if getattr(response.choices[0], "finish_reason", None) == "length":
+        raise RuntimeError(
+            "Model output was truncated by its token/context limit; no partial script accepted."
+        )
     content = response.choices[0].message.content
     if not content:
         raise RuntimeError("LLM returned an empty script.")
@@ -71,9 +110,47 @@ def rewrite_chunked_dialogue_script_draft(
     draft_text: str,
     model: str | None = None,
     chunk_size: int | None = None,
-    temperature: float = 0.25,
+    temperature: float | None = None,
+    target_minutes: float | None = None,
+    with_plan: bool = False,
+    with_review: bool = False,
+    checkpoint_dir: Path | None = None,
+    source_blocks: list[str] | None = None,
 ) -> tuple[str, ScriptValidationResult]:
-    blocks = _split_news_blocks(draft_text)
+    temperature = settings.llm_script_temperature if temperature is None else temperature
+    model = model or settings.llm_model
+    generation = generation_settings(model)
+    author_format = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "dialogue_scene",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["turns"],
+                "properties": {
+                    "turns": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["speaker", "text"],
+                            "properties": {
+                                "speaker": {
+                                    "type": "string",
+                                    "enum": list(get_active_character_keys()),
+                                },
+                                "text": {"type": "string", "minLength": 1},
+                            },
+                        },
+                    }
+                },
+            },
+        },
+    }
+    blocks = source_blocks if source_blocks is not None else _split_news_blocks(draft_text)
     if not blocks:
         return rewrite_validated_dialogue_script_draft(
             draft_text,
@@ -85,40 +162,174 @@ def rewrite_chunked_dialogue_script_draft(
 
     chunk_size = max(1, chunk_size or settings.llm_script_chunk_size)
     chunks = [blocks[index : index + chunk_size] for index in range(0, len(blocks), chunk_size)]
-    rendered_chunks = []
-    for index, chunk_blocks in enumerate(chunks, start=1):
-        chunk_text = "\n\n".join(_compact_news_block(block) for block in chunk_blocks)
-        try:
-            rendered_chunk = rewrite_script_draft(
-                _build_chunk_user_prompt(chunk_text, index, len(chunks)),
-                model=model,
-                system_prompt=_load_dialogue_chunk_system_prompt(),
-                temperature=max(0.12, temperature - ((index - 1) * 0.02)),
-                max_tokens=650,
-            )
-        except Exception:
-            rendered_chunk = _build_deterministic_chunk_dialogue(chunk_text, index)
+    # Editorial word pace includes room for pauses; actual audio timing is measured later.
+    target_words = max(
+        1,
+        round(
+            (target_minutes or settings.podcast_target_minutes)
+            * settings.podcast_script_words_per_minute
+        ),
+    )
+    scene_sources = ["\n\n".join(_compact_news_block(block) for block in chunk) for chunk in chunks]
+    plans = {}
+    if with_plan:
+        from app.llm.scene_editor import plan_scenes
 
+        plan_path = checkpoint_dir / "plan.json" if checkpoint_dir else None
+        plan_key = fingerprint(
+            {
+                "sources": scene_sources,
+                "generation": generation,
+                "profiles": build_scriptwriter_context(),
+                "planner": Path(__file__).with_name("scene_editor.py").read_text(encoding="utf-8"),
+            }
+        )
+        cached = load_checkpoint(plan_path, plan_key)
+        plans = (
+            cached["scenes"]
+            if cached and isinstance(cached.get("scenes"), dict)
+            else plan_scenes(scene_sources, model=model)
+        )
+        save_checkpoint(plan_path, plan_key, {"scenes": plans})
+    weights = [
+        (plans.get(index) or plans.get(str(index)) or {}).get("depth_weight", len(chunk))
+        for index, chunk in enumerate(chunks, start=1)
+    ]
+    # Normalize first to keep even very large finite editorial weights safe.
+    largest_weight = max(weights)
+    weights = [weight / largest_weight for weight in weights]
+    rendered_chunks = []
+    for index, (chunk_blocks, chunk_text) in enumerate(zip(chunks, scene_sources), start=1):
+        chunk_words = max(1, round(target_words * weights[index - 1] / sum(weights)))
+        plan = plans.get(index) or plans.get(str(index))
+        prompt = _build_chunk_user_prompt(
+            chunk_text,
+            index,
+            len(chunks),
+            target_words=chunk_words,
+            previous_scene=rendered_chunks[-1] if rendered_chunks else "",
+            scene_plan=plan,
+        )
+        system_prompt = _load_dialogue_chunk_system_prompt()
+        key = fingerprint(
+            {
+                "prompt": prompt,
+                "system": system_prompt,
+                "generation": generation,
+                "temperature": temperature,
+                "author_protocol": author_format,
+            }
+        )
+        author_path = checkpoint_dir / f"{index:03d}_draft.json" if checkpoint_dir else None
+        cached = load_checkpoint(author_path, key)
+        logger.info(
+            "Generating dialogue scene %s/%s, target %s words%s",
+            index,
+            len(chunks),
+            chunk_words,
+            " (checkpoint)" if cached else "",
+        )
+        rendered_chunk = cached.get("script") if cached else None
+        if not isinstance(rendered_chunk, str):
+            response = rewrite_script_draft(
+                prompt,
+                model=model,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max(400, chunk_words * 10),
+                response_format=author_format,
+                response_path=author_path.with_suffix(".raw.txt") if author_path else None,
+            )
+            rendered_chunk = _parse_author_dialogue(response)
+            save_checkpoint(author_path, key, {"script": rendered_chunk})
         rendered_chunk = _clean_chunk_dialogue(rendered_chunk)
         if not rendered_chunk:
-            rendered_chunk = _build_deterministic_chunk_dialogue(chunk_text, index)
+            raise RuntimeError(f"Scene {index} contains no dialogue; generation stopped.")
+        if with_review:
+            from app.llm.scene_editor import audit_scene, review_scene
+
+            unresolved = []
+            # Include the adjacent original source when a transition refers back.
+            source_context = "\n\n".join(scene_sources[max(0, index - 2) : index])
+            editor_identity = {
+                "code": Path(__file__).with_name("scene_editor.py").read_text(encoding="utf-8"),
+                "critic_enabled": settings.llm_scene_critic_enabled,
+                "critic_reasoning_effort": settings.llm_source_review_reasoning_effort,
+                "native_reasoning_budget": settings.llama_cpp_reasoning_budget
+                if settings.local_llm_engine == "llamacpp"
+                else None,
+            }
+            for attempt in range(1, settings.llm_factcheck_attempts + 2):
+                suffix = "" if attempt == 1 else f"_{attempt}"
+                audit_path = (
+                    checkpoint_dir / f"{index:03d}_factcheck{suffix}.json"
+                    if checkpoint_dir
+                    else None
+                )
+                audit_key = fingerprint(
+                    {
+                        "source": source_context,
+                        "script": rendered_chunk,
+                        "generation": generation,
+                        "editor": editor_identity,
+                    }
+                )
+                audit = load_checkpoint(audit_path, audit_key)
+                if audit is None:
+                    audit = audit_scene(
+                        rendered_chunk,
+                        source_context,
+                        model=model,
+                        response_path=audit_path.with_suffix(".raw.json") if audit_path else None,
+                    )
+                    save_checkpoint(audit_path, audit_key, audit)
+                feedback = [*audit["unsupported_claims"], *unresolved]
+                if not feedback:
+                    break
+                if attempt > settings.llm_factcheck_attempts:
+                    raise RuntimeError(
+                        f"Scene {index} has unresolved editorial issues; see scene review checkpoint."
+                    )
+                logger.warning(
+                    "Scene %s needs source corrections, attempt %s/%s",
+                    index,
+                    attempt,
+                    settings.llm_factcheck_attempts,
+                )
+                review_path = (
+                    checkpoint_dir / f"{index:03d}_review{suffix}.json" if checkpoint_dir else None
+                )
+                review_key = fingerprint(
+                    {
+                        "source": source_context,
+                        "script": rendered_chunk,
+                        "generation": generation,
+                        "target_words": chunk_words,
+                        "feedback": feedback,
+                        "editor": editor_identity,
+                    }
+                )
+                review = load_checkpoint(review_path, review_key)
+                if review is None:
+                    review = review_scene(
+                        rendered_chunk,
+                        source_context,
+                        model=model,
+                        target_words=chunk_words,
+                        feedback=feedback,
+                        response_path=review_path.with_suffix(".raw.json") if review_path else None,
+                    )
+                    save_checkpoint(review_path, review_key, review)
+                rendered_chunk = _clean_chunk_dialogue(review["script"])
+                unresolved = [
+                    {"claim": "", "reason": issue} for issue in review.get("unresolved_issues", [])
+                ]
         rendered_chunks.append(rendered_chunk)
 
-    script_text = "\n".join(
-        [
-            *rendered_chunks,
-            "mark: На этом всё, это были главные новости на сегодня. "
-            "Главный вывод: инструменты меняются быстро, но проверка фактов, доступов и резервных сценариев остаётся за командой.",
-            "nika: Хорошего вам дня. Пусть новые штуки помогают, а не превращаются в ещё одну срочную задачу.",
-            "gleb: И пусть внешние сервисы сегодня ведут себя прилично. Хотя запасной план я бы всё равно держал рядом.",
-            "artem: С вами были Марк, Ника, Глеб и Артём. До новых встреч.",
-        ],
+    script_text = repair_dialogue_script_text("\n".join(rendered_chunks))
+    validation = validate_dialogue_script(
+        script_text, require_all_characters=False, allowed_speakers=set(get_active_character_keys())
     )
-    script_text = repair_dialogue_script_text(script_text)
-    validation = validate_dialogue_script(script_text)
-    if validation.has_blocking_issues:
-        script_text = _build_deterministic_dialogue_from_blocks(blocks)
-        validation = validate_dialogue_script(script_text)
     return script_text, validation
 
 
@@ -133,7 +344,7 @@ def edit_dialogue_script(
         f"{source_draft.strip()}\n\n"
         "Диалоговый сценарий для редакторской правки:\n"
         f"{script_text.strip()}\n\n"
-        "Верни только улучшенный диалоговый сценарий в формате mark:/nika:/gleb:/artem:."
+        f"Верни только улучшенный диалог: ключ участника ({', '.join(get_active_character_keys())}) и двоеточие."
     )
     return rewrite_script_draft(
         editor_input,
@@ -153,7 +364,9 @@ def edit_validated_dialogue_script(
     if attempts < 1:
         raise ValueError("attempts must be at least 1")
 
-    original_validation = validate_dialogue_script(script_text)
+    original_validation = validate_dialogue_script(
+        script_text, allowed_speakers=set(get_active_character_keys())
+    )
     current_script_text = script_text
     last_validation: ScriptValidationResult | None = None
     for attempt in range(1, attempts + 1):
@@ -164,13 +377,17 @@ def edit_validated_dialogue_script(
             model=model,
             temperature=attempt_temperature,
         )
-        validation = validate_dialogue_script(edited_script_text)
+        validation = validate_dialogue_script(
+            edited_script_text, allowed_speakers=set(get_active_character_keys())
+        )
         if not validation.has_blocking_issues and not validation.has_quality_retry_issues:
             return edited_script_text, validation
 
         repaired_script_text = repair_dialogue_script_text(edited_script_text, validation)
         if repaired_script_text != edited_script_text:
-            repaired_validation = validate_dialogue_script(repaired_script_text)
+            repaired_validation = validate_dialogue_script(
+                repaired_script_text, allowed_speakers=set(get_active_character_keys())
+            )
             if (
                 not repaired_validation.has_blocking_issues
                 and not repaired_validation.has_quality_retry_issues
@@ -215,7 +432,9 @@ def rewrite_validated_dialogue_script_draft(
             model=model,
             temperature=attempt_temperature,
         )
-        validation = validate_dialogue_script(script_text)
+        validation = validate_dialogue_script(
+            script_text, allowed_speakers=set(get_active_character_keys())
+        )
         if not validation.has_blocking_issues and not validation.has_quality_retry_issues:
             return script_text, validation
         if not validation.has_blocking_issues:
@@ -228,7 +447,9 @@ def rewrite_validated_dialogue_script_draft(
 
         repaired_script_text = repair_dialogue_script_text(script_text, validation)
         if repaired_script_text != script_text:
-            repaired_validation = validate_dialogue_script(repaired_script_text)
+            repaired_validation = validate_dialogue_script(
+                repaired_script_text, allowed_speakers=set(get_active_character_keys())
+            )
             if (
                 not repaired_validation.has_blocking_issues
                 and not repaired_validation.has_quality_retry_issues
@@ -251,11 +472,15 @@ def rewrite_validated_dialogue_script_draft(
 
     if allow_quality_fallback and last_script_text:
         fallback_script_text = repair_dialogue_script_text(last_script_text, last_validation)
-        fallback_validation = validate_dialogue_script(fallback_script_text)
+        fallback_validation = validate_dialogue_script(
+            fallback_script_text, allowed_speakers=set(get_active_character_keys())
+        )
         if not fallback_validation.has_structural_blocking_issues:
             return fallback_script_text, fallback_validation
 
-    report = format_validation_report(last_validation) if last_validation else "validation did not run"
+    report = (
+        format_validation_report(last_validation) if last_validation else "validation did not run"
+    )
     raise RuntimeError(
         "LLM generated an invalid dialogue script after "
         f"{attempts} attempts.\n{report}\n\nLast script:\n{last_script_text}"
@@ -280,19 +505,8 @@ def _append_validation_feedback(draft_text: str, validation: ScriptValidationRes
         "исправив все пункты ниже, но не добавляя новых фактов:\n"
         f"{format_validation_report(validation)}"
         "\n\n"
-        "Как исправлять:\n"
-        "- вместо «давайте перейдём» сразу называй следующий факт и его риск;\n"
-        "- вместо «как это поможет обычному разработчику» задавай вопрос про конкретный артефакт: "
-        "код, API, лимиты, доступы, сборку, данные;\n"
-        "- вместо повторов «командам стоит» используй конкретные действия: "
-        "проверьте, зафиксируйте, вынесите, заложите, отключите;\n"
-        "- не начинай реплики с «Да», «Абсолютно верно», «Интересно»; "
-        "сразу добавляй новый смысл;\n"
-        "- каждая строка должна начинаться с mark:, nika:, gleb: или artem:; "
-        "никаких отдельных строк без диктора;\n"
-        "- не дублируй приветствие и не добавляй второе «Добрый день» после rundown;\n"
-        "- rundown должен содержать короткие названия тем без многоточий;\n"
-        "- финал должен быть практическим выводом и живым прощанием, без благодарностей и общих обещаний."
+        "Сохрани полные факты и существенные оговорки. Исправь формат, устрани повторы, "
+        "сделай обмен репликами естественным. Не подменяй факты общими советами."
     )
 
 
@@ -312,7 +526,7 @@ def _append_editor_validation_feedback(
         "Ошибки редакторской версии:\n"
         f"{format_validation_report(validation)}\n\n"
         "Перепиши редакторскую версию так, чтобы она осталась живой, но строго прошла формат: "
-        "только строки mark:/nika:/gleb:/artem:, без текста вне реплик, без самоназываний, "
+        f"только строки с ключами участников ({', '.join(get_active_character_keys())}), без текста вне реплик, "
         "без повторяющихся шаблонов и без новых фактов."
     )
 
@@ -322,268 +536,70 @@ def _split_news_blocks(draft_text: str) -> list[str]:
     return [chunk.strip() for chunk in chunks if chunk.strip().startswith("###")]
 
 
-def _build_chunk_user_prompt(chunk_text: str, chunk_index: int, chunks_total: int) -> str:
-    return (
-        f"Блок {chunk_index} из {chunks_total}. Напиши фрагмент разговора по этим новостям.\n\n"
-        f"{chunk_text}\n\n"
-        "Верни только 4-8 строк диалога. Не делай приветствие и финальное прощание. "
-        "Не произноси ссылки и строки Fact lock дословно. "
-        "Если тема выглядит как consumer/gadget/lifestyle без явного IT-механизма, "
-        "не делай из неё production-риск и не добавляй советы про доступы, логи или резервный план."
+def _build_chunk_user_prompt(
+    chunk_text: str,
+    chunk_index: int,
+    chunks_total: int,
+    *,
+    target_words: int | None = None,
+    previous_scene: str = "",
+    scene_plan: dict | None = None,
+) -> str:
+    word_budget = target_words or 250
+    task = (
+        "Верни только новые реплики этой сцены: предыдущий разговор не перепечатывай и не редактируй. Напиши обсуждение по содержанию источников. Ориентир объёма новой сцены — "
+        f"{max(1, round(word_budget * 0.85))}–{max(1, round(word_budget * 1.15))} слов. "
+        "Если содержательного материала меньше, не растягивай его. "
+        + (
+            "Это начало выпуска. "
+            if chunk_index == 1
+            else "Продолжи беседу, не начинай выпуск заново. "
+        )
+        + (
+            "Это последняя сцена; естественно заверши разговор."
+            if chunk_index == chunks_total
+            else "Далее будет другая тема; не прощайся со слушателями."
+        )
+    )
+    return json.dumps(
+        {
+            "scene": {"index": chunk_index, "total": chunks_total},
+            "source_material": chunk_text,
+            "previous_scene_for_continuity_only": previous_scene,
+            "editorial_angle": scene_plan,
+            "task": task,
+        },
+        ensure_ascii=False,
     )
 
 
 def _clean_chunk_dialogue(script_text: str) -> str:
-    allowed = {"mark", "nika", "gleb", "artem"}
+    return repair_dialogue_script_text(script_text)
+
+
+def _parse_author_dialogue(response: str) -> str:
+    payload = json.loads(response)
+    if not isinstance(payload, dict) or set(payload) != {"turns"}:
+        raise ValueError("Author must return a JSON object containing only turns.")
+    turns = payload["turns"]
+    if not isinstance(turns, list) or not turns:
+        raise ValueError("Author must return a nonempty turns array.")
     lines = []
-    for raw_line in script_text.splitlines():
-        line = raw_line.strip()
-        match = re.match(r"^(mark|nika|gleb|artem|Mark|Nika|Gleb|Artem)\s*[:：]\s*(.+)$", line)
-        if not match:
-            continue
-        speaker = match.group(1).casefold()
-        if speaker not in allowed:
-            continue
-        text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", match.group(2)).strip()
-        text = re.sub(r"https?://\S+|\b\w+\.(?:me|ru|com|io|dev)/\S+", "", text).strip()
-        if text:
-            lines.append(f"{speaker}: {text}")
-    repaired = repair_dialogue_script_text("\n".join(lines))
-    return repaired.strip()
-
-
-def _build_deterministic_chunk_dialogue(chunk_text: str, chunk_index: int) -> str:
-    topics = _extract_fact_topics(chunk_text)
-    if not topics:
-        return ""
-
-    lines = []
-    for index, topic in enumerate(topics):
-        topic_index = chunk_index + index - 1
-        lines.extend(_build_fallback_topic_scene(topic, topic_index))
+    for turn in turns:
+        if not isinstance(turn, dict) or set(turn) != {"speaker", "text"}:
+            raise ValueError("Each author turn must contain only speaker and text.")
+        speaker, text = turn["speaker"], turn["text"]
+        if not isinstance(speaker, str) or speaker not in get_active_character_keys():
+            raise ValueError("Author returned an unknown or inactive speaker.")
+        if not isinstance(text, str) or not text.strip() or "\n" in text or "\r" in text:
+            raise ValueError("Author turn text must be nonempty and contain no newlines.")
+        lines.append(f"{speaker}: {text}")
     return "\n".join(lines)
 
 
-def _build_deterministic_dialogue_from_blocks(blocks: list[str]) -> str:
-    topics = []
-    for block in blocks:
-        topics.extend(_extract_fact_topics(block))
-    if not topics:
-        return ""
-
-    body = []
-    for index, topic in enumerate(topics):
-        body.extend(_build_fallback_topic_scene(topic, index))
-        if index in {1, 5} and index < len(topics) - 1:
-            body.append(_fallback_live_moment(index))
-    return "\n".join(
-        [
-            *body,
-            "mark: На этом всё, это были главные новости на сегодня. После выпуска проверьте, какие из этих историй реально задевают ваши сервисы, данные или процессы.",
-            "nika: Хорошего вам дня. Пусть обновления помогают, а не превращаются в внезапный созвон.",
-            "gleb: А если созвон всё-таки случится, пусть хотя бы факты будут под рукой.",
-            "artem: С вами были Марк, Ника, Глеб и Артём. До новых встреч.",
-        ],
-    )
-
-
-def _build_fallback_topic_scene(topic: dict[str, str], index: int) -> list[str]:
-    if topic.get("consumer") == "true":
-        return _build_consumer_signal_scene(topic, index)
-
-    patterns = [
-        (
-            "mark",
-            "nika",
-            "gleb",
-            "artem",
-            "Открываем конкретикой",
-            "Факт под витриной такой",
-        ),
-        (
-            "nika",
-            "gleb",
-            "artem",
-            "mark",
-            "Следом история про практику",
-            "Если сказать проще",
-        ),
-        (
-            "gleb",
-            "artem",
-            "nika",
-            "mark",
-            "Теперь к новости с подвохом",
-            "Сухой остаток из новости",
-        ),
-        (
-            "artem",
-            "mark",
-            "gleb",
-            "nika",
-            "Переключаемся на техническую часть",
-            "Факт, который надо держать в голове",
-        ),
-    ]
-    lead, responder, skeptic, closer, transition, fact_prefix = patterns[index % len(patterns)]
-    return [
-        f"{lead}: {transition}: {topic['claim']}.",
-        f"{responder}: {fact_prefix}: {topic['fact']}.",
-        f"{skeptic}: {_fallback_skeptic_line(topic, index)}",
-        f"{closer}: {_fallback_takeaway_line(topic, index)}",
-    ]
-
-
-def _build_consumer_signal_scene(topic: dict[str, str], index: int) -> list[str]:
-    patterns = [
-        ("mark", "nika", "gleb", "artem", "Короткий сигнал из потребительской ленты"),
-        ("nika", "mark", "artem", "gleb", "Есть ещё лёгкая история на полях"),
-        ("gleb", "artem", "nika", "mark", "Это скорее рыночная заметка"),
-        ("artem", "gleb", "mark", "nika", "Отмечу как контекст, не как задачу для команды"),
-    ]
-    lead, responder, skeptic, closer, transition = patterns[index % len(patterns)]
-    return [
-        f"{lead}: {transition}: {topic['claim']}.",
-        f"{responder}: Из фактов здесь только это: {topic['fact']}.",
-        f"{skeptic}: В инженерную проблему это не превращаем: данных про платформы, API или эксплуатацию в новости нет.",
-        f"{closer}: Поэтому оставляем как фон рынка, без чеклиста для разработки.",
-    ]
-
-
-def _fallback_skeptic_line(topic: dict[str, str], index: int) -> str:
-    subject = _topic_subject(topic)
-    lines = [
-        f"Я бы проверил не заголовок, а конкретное ограничение вокруг {subject}.",
-        f"Без деталей по {subject} легко принять громкую формулировку за рабочий сигнал.",
-        f"Главная проверка здесь в том, что именно меняется в {subject} и кто это заметит первым.",
-        f"Шире фактов не прыгаем: сначала смотрим, задевает ли {subject} пользователей, команды или поставку.",
-    ]
-    return lines[index % len(lines)]
-
-
-def _fallback_takeaway_line(topic: dict[str, str], index: int) -> str:
-    subject = _topic_subject(topic)
-    lines = [
-        f"Отделите подтверждённый факт про {subject} от рекламной или эмоциональной обвязки.",
-        f"Запишите, что именно известно про {subject}, а что пока остаётся предположением.",
-        f"Если {subject} влияет на ваш продукт или процесс, проверьте это отдельным тестом, а не по одному заголовку.",
-        f"Не ищите универсальный совет: проверьте конкретный механизм в истории про {subject}.",
-    ]
-    return lines[index % len(lines)]
-
-
-def _fallback_live_moment(index: int) -> str:
-    moments = [
-        "nika: Секунду, у кого-то клавиатура так щёлкает, будто уже чинят прод. Продолжаем.",
-        "gleb: Кхм. Если это был микрофон, то он тоже просит резервный план.",
-    ]
-    return moments[index % len(moments)]
-
-
 def _compact_news_block(block: str) -> str:
-    title_match = re.search(r"(?m)^###\s+(.+)$", block)
-    title = title_match.group(1).strip() if title_match else "news"
-    facts = []
-    for line in block.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("- Main claim:") or stripped.startswith("- Allowed fact:"):
-            facts.append(stripped)
-    if not facts:
-        facts = [_shorten_for_dialogue(block, max_chars=400)]
-    return "\n".join([f"### {title}", *facts[:5]])
-
-
-def _extract_fact_topics(chunk_text: str) -> list[dict[str, str]]:
-    claims = re.findall(r"(?m)^-\s+Main claim:\s+(.+)$", chunk_text)
-    facts = re.findall(r"(?m)^-\s+Allowed fact:\s+(.+)$", chunk_text)
-    topics = []
-    for index, claim in enumerate(claims):
-        fact = facts[index] if index < len(facts) else claim
-        topics.append(
-            {
-                "claim": _shorten_for_dialogue(claim),
-                "fact": _shorten_for_dialogue(fact),
-                "consumer": "true" if _is_consumer_topic(f"{claim} {fact}") else "false",
-            },
-        )
-    return topics
-
-
-def _shorten_for_dialogue(text: str, max_chars: int = 180) -> str:
-    text = " ".join(text.split()).strip(" .,:;!?—-")
-    text = _drop_weak_leading_title(text)
-    if len(text) <= max_chars:
-        return text
-    return text[: max_chars - 3].rstrip() + "..."
-
-
-def _drop_weak_leading_title(text: str) -> str:
-    match = re.match(
-        r"^(?:finally|факт дня|важно|срочно)\s*(?:[.!?…:—–-]+\s+|:\s*)(?P<tail>.+)$",
-        text,
-        flags=re.IGNORECASE,
-    )
-    if not match:
-        return text
-    return match.group("tail").strip(" .,:;!?—-")
-
-
-def _topic_subject(topic: dict[str, str]) -> str:
-    text = _drop_weak_leading_title(topic.get("claim") or topic.get("fact") or "этой новости")
-    text = re.split(r"\s+[—–-]\s+|[.:?!…]+(?:\s+|$)", text, maxsplit=1)[0]
-    words = text.strip(" .,:;!?—-").split()
-    if not words:
-        return "этой новости"
-    return " ".join(words[:6])
-
-
-def _is_consumer_topic(text: str) -> bool:
-    normalized = text.casefold().replace("ё", "е")
-    consumer_keywords = {
-        "авто",
-        "автомобил",
-        "болид",
-        "игр",
-        "кроссов",
-        "монитор",
-        "наушник",
-        "планшет",
-        "смартфон",
-        "сабо",
-        "тапк",
-        "телевизор",
-        "фильм",
-        "формул",
-        "crocs",
-        "li auto",
-        "red bull",
-        "sony 1000x",
-        "subnautica",
-        "xperia",
-    }
-    strong_it_keywords = {
-        "api",
-        "backend",
-        "cve",
-        "devops",
-        "github",
-        "kubernetes",
-        "llm",
-        "openai",
-        "python",
-        "security",
-        "уязвимост",
-        "инфраструктур",
-        "разработ",
-        "репозитор",
-        "модел",
-        "нейросет",
-        "агент",
-        "ии-агент",
-    }
-    return any(keyword in normalized for keyword in consumer_keywords) and not any(
-        keyword in normalized for keyword in strong_it_keywords
-    )
+    # Keep the full source: late caveats can reverse the meaning of a short claim.
+    return block.strip()
 
 
 def _load_system_prompt() -> str:

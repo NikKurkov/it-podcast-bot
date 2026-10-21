@@ -7,6 +7,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.pipeline.episode_paths import resolve_episode_path
+
 from app.pipeline.episode_package import EpisodePackage
 from app.pipeline.episode_report import format_episode_report
 
@@ -39,15 +41,7 @@ def main() -> None:
 
 
 def _resolve_episode_path(value: str) -> Path:
-    if value != "latest":
-        path = Path(value)
-        return path if path.is_absolute() else PROJECT_ROOT / path
-
-    episodes_dir = PROJECT_ROOT / "data" / "episodes"
-    candidates = [path for path in episodes_dir.iterdir() if path.is_dir()]
-    if not candidates:
-        raise SystemExit("No episode packages found in data/episodes.")
-    return max(candidates, key=lambda path: path.stat().st_mtime)
+    return resolve_episode_path(value, PROJECT_ROOT)
 
 
 def _package_from_path(path: Path) -> EpisodePackage:

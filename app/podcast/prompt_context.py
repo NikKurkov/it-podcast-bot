@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 
 from app.config.settings import settings
 from app.podcast.characters import format_character_profiles_for_prompt
@@ -55,11 +56,21 @@ _RU_ORDINAL_DAYS = {
 def build_scriptwriter_context() -> dict:
     return {
         "character_profiles": format_character_profiles_for_prompt(),
+        "style_guide": load_style_guide(),
         "episode_date_ru": format_russian_episode_date(),
         "podcast_title": settings.podcast_title,
+        "target_minutes": settings.podcast_target_minutes,
+        "target_words": round(
+            settings.podcast_target_minutes * settings.podcast_script_words_per_minute
+        ),
     }
 
 
 def format_russian_episode_date(moment: datetime | None = None) -> str:
     moment = moment or datetime.now().astimezone()
     return f"{_RU_ORDINAL_DAYS[moment.day]} {_RU_MONTHS_GENITIVE[moment.month]}"
+
+
+def load_style_guide() -> str:
+    path = Path(settings.podcast_style_guide_file)
+    return path.read_text(encoding="utf-8").strip() if path.exists() else ""

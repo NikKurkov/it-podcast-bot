@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from openai import APIConnectionError
 
@@ -14,7 +15,8 @@ from app.llm.client import create_llm_client
 def main() -> None:
     client = create_llm_client()
     print("LLM config:")
-    print(f"  base_url: {settings.llm_base_url}")
+    endpoint = urlsplit(settings.llm_base_url)
+    print(f"  server: {endpoint.scheme}://{endpoint.hostname}")
     print(f"  model: {settings.llm_model}")
 
     try:
@@ -22,10 +24,7 @@ def main() -> None:
     except APIConnectionError as exc:
         raise SystemExit(
             "Could not connect to local LLM server.\n"
-            f"Configured base URL: {settings.llm_base_url}\n\n"
-            "For Ollama, install it, then run:\n"
-            f"  ollama pull {settings.llm_model}\n"
-            "  ollama serve"
+            "Check the configured engine, executable and model, then run `make ollama`."
         ) from exc
     model_ids = [model.id for model in models.data]
     print(f"  models_available: {len(model_ids)}")

@@ -1,10 +1,12 @@
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import Episode, EpisodeDraft, EpisodePost
+
+PUBLISHED_HISTORY_STATUSES = ("published",)
 
 
 def create_episode_draft(
@@ -29,7 +31,9 @@ def create_episode_draft(
 def get_latest_episode_drafts(session: Session, limit: int = 10) -> list[EpisodeDraft]:
     return list(
         session.scalars(
-            select(EpisodeDraft).order_by(desc(EpisodeDraft.created_at), desc(EpisodeDraft.id)).limit(limit),
+            select(EpisodeDraft)
+            .order_by(desc(EpisodeDraft.created_at), desc(EpisodeDraft.id))
+            .limit(limit),
         ).all(),
     )
 
@@ -71,7 +75,7 @@ def record_episode_package(
     episode.package_path = package_path
     episode.audio_path = audio_path
     episode.metadata_path = metadata_path
-    episode.status = "completed" if audio_path else "draft"
+    episode.status = "generated" if audio_path else "draft"
 
     session.flush()
     for link in list(episode.posts):
@@ -91,9 +95,7 @@ def record_episode_package(
 
 def get_episode_by_slug(session: Session, slug: str) -> Episode | None:
     return session.scalar(
-        select(Episode)
-        .options(selectinload(Episode.posts))
-        .where(Episode.slug == slug),
+        select(Episode).options(selectinload(Episode.posts)).where(Episode.slug == slug),
     )
 
 
@@ -102,6 +104,7 @@ def get_recent_episode_post_ids(
     *,
     limit: int = 1,
     require_completed: bool = True,
+    statuses: tuple[str, ...] | None = None,
 ) -> set[int]:
     if limit < 1:
         return set()
@@ -109,16 +112,33 @@ def get_recent_episode_post_ids(
     statement = (
         select(Episode)
         .options(selectinload(Episode.posts))
-        .order_by(desc(Episode.created_at), desc(Episode.id))
+        .order_by(desc(func.coalesce(Episode.published_at, Episode.created_at)), desc(Episode.id))
         .limit(limit)
     )
-    if require_completed:
-        statement = statement.where(Episode.status.in_(("completed", "published")))
+    if statuses is not None:
+        statement = statement.where(Episode.status.in_(statuses))
+    elif require_completed:
+        statement = statement.where(Episode.status.in_(PUBLISHED_HISTORY_STATUSES))
 
     post_ids: set[int] = set()
     for episode in session.scalars(statement).all():
         post_ids.update(link.telegram_post_id for link in episode.posts)
     return post_ids
+
+
+def mark_episode_blocked(
+    session: Session,
+    *,
+    slug: str,
+) -> Episode | None:
+    episode = get_episode_by_slug(session, slug)
+    if episode is None:
+        return None
+
+    episode.status = "blocked"
+    session.commit()
+    session.refresh(episode)
+    return episode
 
 
 def mark_episode_published(

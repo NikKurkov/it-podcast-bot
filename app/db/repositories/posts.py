@@ -3,7 +3,7 @@ from typing import TypedDict
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, contains_eager, selectinload
 
 from app.db.models import SourceChannel, TelegramPost
 from app.utils.hashing import make_text_hash
@@ -31,12 +31,15 @@ def post_exists(
     source_channel_id: int,
     telegram_message_id: int,
 ) -> bool:
-    return session.scalar(
-        select(TelegramPost.id).where(
-            TelegramPost.source_channel_id == source_channel_id,
-            TelegramPost.telegram_message_id == telegram_message_id,
-        ),
-    ) is not None
+    return (
+        session.scalar(
+            select(TelegramPost.id).where(
+                TelegramPost.source_channel_id == source_channel_id,
+                TelegramPost.telegram_message_id == telegram_message_id,
+            ),
+        )
+        is not None
+    )
 
 
 def save_post(
@@ -61,7 +64,7 @@ def save_or_update_post(
         ),
     )
     if existing_post:
-        updated = _update_post_metrics(existing_post, post_data)
+        updated = _update_post(existing_post, post_data)
         if updated:
             session.commit()
             session.refresh(existing_post)
@@ -99,8 +102,14 @@ def save_or_update_post(
     return {"post": post, "created": True, "updated": False}
 
 
-def _update_post_metrics(post: TelegramPost, post_data: TelegramPostData) -> bool:
+def _update_post(post: TelegramPost, post_data: TelegramPostData) -> bool:
     updated = False
+    if "text" in post_data:
+        text = normalize_text(post_data["text"])
+        if post.text != text:
+            post.text = text
+            post.text_hash = make_text_hash(text)
+            updated = True
     for field in ("views", "forwards", "raw_json"):
         new_value = post_data.get(field)
         if new_value is not None and getattr(post, field) != new_value:
@@ -114,9 +123,12 @@ def count_posts(session: Session) -> int:
 
 
 def count_unprocessed_posts(session: Session) -> int:
-    return session.scalar(
-        select(func.count(TelegramPost.id)).where(TelegramPost.is_processed.is_(False)),
-    ) or 0
+    return (
+        session.scalar(
+            select(func.count(TelegramPost.id)).where(TelegramPost.is_processed.is_(False)),
+        )
+        or 0
+    )
 
 
 def count_sources(session: Session) -> int:
@@ -131,6 +143,7 @@ def get_latest_posts(
     statement = (
         select(TelegramPost)
         .join(TelegramPost.source_channel)
+        .options(contains_eager(TelegramPost.source_channel))
         .order_by(desc(TelegramPost.message_date), desc(TelegramPost.id))
         .limit(limit)
     )
@@ -152,6 +165,7 @@ def get_post_by_source_message_id(
     return session.scalar(
         select(TelegramPost)
         .join(TelegramPost.source_channel)
+        .options(contains_eager(TelegramPost.source_channel))
         .where(
             SourceChannel.username == source_username.strip().lstrip("@"),
             TelegramPost.telegram_message_id == telegram_message_id,
@@ -176,6 +190,7 @@ def get_posts_for_digest(
     statement = (
         select(TelegramPost)
         .join(TelegramPost.source_channel)
+        .options(contains_eager(TelegramPost.source_channel))
         .order_by(desc(TelegramPost.message_date), desc(TelegramPost.id))
         .limit(limit)
     )
@@ -236,8 +251,9 @@ def get_source_report(session: Session) -> list[dict[str, object]]:
             "avg_views": avg_views,
             "avg_forwards": avg_forwards,
         }
-        for username, title, posts_count, latest_message_date, avg_views, avg_forwards
-        in session.execute(statement).all()
+        for username, title, posts_count, latest_message_date, avg_views, avg_forwards in session.execute(
+            statement
+        ).all()
     ]
 
 

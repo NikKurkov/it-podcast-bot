@@ -8,6 +8,7 @@ from app.db.repositories.episodes import (
     get_episode_by_slug,
     get_latest_episode_drafts,
     get_recent_episode_post_ids,
+    mark_episode_blocked,
     mark_episode_published,
     record_episode_package,
 )
@@ -61,9 +62,9 @@ def test_record_episode_package_tracks_posts_in_order() -> None:
             metadata_path="data/episodes/2026-05-10_070000/metadata.json",
         )
 
-        assert episode.status == "completed"
+        assert episode.status == "generated"
         assert [link.telegram_post_id for link in episode.posts] == [first_post.id, second_post.id]
-        assert get_recent_episode_post_ids(session, limit=1) == {first_post.id, second_post.id}
+        assert get_recent_episode_post_ids(session, limit=1) == set()
 
 
 def test_record_episode_package_replaces_existing_post_links() -> None:
@@ -119,6 +120,27 @@ def test_mark_episode_published_updates_channel_metadata() -> None:
         assert published_episode.telegram_channel_id == "-1001"
         assert published_episode.telegram_message_id == 42
         assert published_episode.published_at is not None
+
+
+def test_mark_episode_blocked_excludes_episode_from_history() -> None:
+    session_factory = _make_session_factory()
+    with session_factory() as session:
+        source = get_or_create_source(session, "durov")
+        post = save_post(session, source, _post_data(1, "Blocked story"))
+        episode = record_episode_package(
+            session,
+            slug="blocked",
+            title="Blocked",
+            package_path="data/episodes/blocked",
+            post_ids=[post.id],
+            audio_path="data/episodes/blocked/audio.mp3",
+        )
+
+        blocked_episode = mark_episode_blocked(session, slug=episode.slug)
+
+        assert blocked_episode is not None
+        assert blocked_episode.status == "blocked"
+        assert get_recent_episode_post_ids(session, limit=1) == set()
 
 
 def _make_session_factory() -> sessionmaker:

@@ -1,6 +1,5 @@
 from app.config.settings import settings
 from app.podcast.characters import (
-    get_all_character_profiles,
     get_character_keys,
     get_character_profile,
 )
@@ -45,7 +44,7 @@ def _provider_for_character(provider_name: str | None = None) -> str:
     provider = (provider_name or settings.tts_provider).strip().lower()
     if provider in {"silero", "xtts"}:
         return provider
-    return "silero"
+    raise ValueError(f"Unsupported dialogue TTS provider: {provider}. Choose silero or xtts.")
 
 
 def _speaker_for_character(
@@ -63,30 +62,6 @@ def _speaker_for_character(
         "artem": settings.xtts_artem_voice,
     }
     return explicit_paths.get(character_key) or character_key
-
-
-CHARACTER_VOICES = {
-    profile.key: {
-        "provider": _provider_for_character(),
-        "speaker": _speaker_for_character(
-            profile.key,
-            _PROSODY_BY_CHARACTER.get(profile.key, {}).get("speaker", profile.default_voice),
-        ),
-        "sample_rate": settings.tts_sample_rate,
-        "pause_after_ms": _PROSODY_BY_CHARACTER.get(profile.key, {}).get(
-            "pause_after_ms",
-            profile.pause_after_ms,
-        ),
-        "tempo": _PROSODY_BY_CHARACTER.get(profile.key, {}).get("tempo", 1.0),
-        "pitch_semitones": _PROSODY_BY_CHARACTER.get(profile.key, {}).get("pitch_semitones", 0.0),
-        "volume_db": _PROSODY_BY_CHARACTER.get(profile.key, {}).get("volume_db", 0.0),
-        "mic_preset": _PROSODY_BY_CHARACTER.get(profile.key, {}).get(
-            "mic_preset",
-            "studio_neutral",
-        ),
-    }
-    for profile in get_all_character_profiles()
-}
 
 
 def get_voice_config(character: str, provider_name: str | None = None) -> dict:
