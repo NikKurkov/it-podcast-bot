@@ -265,9 +265,13 @@ def review_scene(
     from app.llm.scriptwriter import rewrite_script_draft
 
     if feedback:
-        targeted = _review_targeted(
-            script, source, model=model, feedback=feedback, response_path=response_path
-        )
+        try:
+            targeted = _review_targeted(
+                script, source, model=model, feedback=feedback, response_path=response_path
+            )
+        except ValueError as exc:
+            logger.warning("Targeted scene review failed; trying full scene review: %s", exc)
+            targeted = None
         if targeted is not None:
             return targeted
 
@@ -569,30 +573,48 @@ def audit_scene(
         logger.info(
             "Fact audit batch %s/%s: %s complete statements", batch_number, len(batches), len(batch)
         )
-        response = rewrite_script_draft(
-            render_audit(batch),
-            model=model,
-            system_prompt=prompt,
-            temperature=0.1,
-            max_tokens=3000,
-            response_format=response_format,
-            response_path=(
+        remaining = batch
+        for attempt in range(2):
+            raw_path = (
                 response_path.with_name(
-                    f"{response_path.stem}_{batch[0]['id']}{response_path.suffix}"
+                    f"{response_path.stem}_{batch[0]['id']}{'_retry' if attempt else ''}"
+                    f"{response_path.suffix}"
                 )
                 if response_path
                 else None
-            ),
+            )
+            response = rewrite_script_draft(
+                render_audit(remaining),
+                model=model,
+                system_prompt=prompt,
+                temperature=0.1,
+                max_tokens=3000,
+                response_format=response_format,
+                response_path=raw_path,
+            )
+            payload = json.loads(response)
+            entries = payload.get("statements") if isinstance(payload, dict) else None
+            if not isinstance(entries, list):
+                raise ValueError("Fact audit must return a statements list.")
+            expected = {turn["id"] for turn in remaining}
+            actual = {entry.get("id") for entry in entries if isinstance(entry, dict)}
+            if actual - expected or any(not isinstance(entry, dict) for entry in entries):
+                raise ValueError("Fact audit contains a foreign script statement.")
+            verdicts.extend(entries)
+            remaining = [turn for turn in remaining if turn["id"] not in actual]
+            if not remaining:
+                break
+            logger.warning("Fact audit omitted %s statements; rechecking", len(remaining))
+        verdicts.extend(
+            {
+                "id": turn["id"],
+                "claim": turn["text"],
+                "status": "unsupported",
+                "evidence_ids": [],
+                "reason": "Модель пропустила утверждение при проверке фактов.",
+            }
+            for turn in remaining
         )
-        payload = json.loads(response)
-        entries = payload.get("statements") if isinstance(payload, dict) else None
-        if not isinstance(entries, list):
-            raise ValueError("Fact audit must return a statements list.")
-        if {entry.get("id") for entry in entries if isinstance(entry, dict)} != {
-            turn["id"] for turn in batch
-        }:
-            raise ValueError("Fact audit must check every script statement in its batch.")
-        verdicts.extend(entries)
     by_id = {turn["id"]: turn for turn in turns}
     seen = set()
     result = {

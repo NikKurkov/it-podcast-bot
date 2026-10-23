@@ -252,6 +252,26 @@ def test_targeted_editor_rejects_invalid_or_unchanged_edits(monkeypatch, edits):
         )
 
 
+def test_editor_falls_back_to_whole_scene_when_targeted_edit_is_invalid(monkeypatch):
+    calls = []
+
+    def generate(payload, **kwargs):
+        calls.append(json.loads(payload))
+        if len(calls) == 1:
+            return json.dumps({"edits": [{"id": 1, "text": "Уже выпущен."}],
+                               "unresolved_issues": []})
+        return json.dumps({"script": "mark: Дата выпуска не объявлена.",
+                           "changes": ["Исправлена дата"], "unresolved_issues": []})
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    result = scene_editor.review_scene(
+        "mark: Уже выпущен.", "Дата выпуска не объявлена.", model="local",
+        target_words=100, feedback=[{"claim": "Уже выпущен."}],
+    )
+    assert len(calls) == 2
+    assert result["script"] == "mark: Дата выпуска не объявлена."
+
+
 @pytest.mark.parametrize("claim", ["", "Отсутствующее утверждение"])
 def test_editor_fallback_rejects_claimed_corrections_without_changed_script(monkeypatch, claim):
     monkeypatch.setattr(
@@ -287,7 +307,7 @@ def test_targeted_editor_rejects_fake_whole_scene_success(monkeypatch):
             }
         ),
     )
-    with pytest.raises(ValueError, match="edits"):
+    with pytest.raises(ValueError, match="unchanged"):
         scene_editor.review_scene(
             "mark: Уже выпущен.",
             "Запуск не объявлен.",
@@ -308,7 +328,7 @@ def test_targeted_editor_cannot_omit_one_of_multiple_affected_turns(monkeypatch)
             }
         ),
     )
-    with pytest.raises(ValueError, match="every affected"):
+    with pytest.raises(ValueError, match="complete script"):
         scene_editor.review_scene(
             "mark: Уже выпущен.\nnika: Дата завтра.",
             "Срок неизвестен.",
@@ -548,22 +568,43 @@ def test_audit_does_not_accept_repeated_source_ids_as_additional_evidence(monkey
         scene_editor.audit_scene("mark: Новость объявлена.", "Новость объявлена.", model="local")
 
 
-def test_fact_audit_cannot_omit_a_statement(monkeypatch):
-    monkeypatch.setattr(
-        scriptwriter,
-        "rewrite_script_draft",
-        lambda *a, **k: json.dumps(
-            {
-                "statements": [
-                    {"id": 1, "status": "supported", "evidence_ids": ["S1"], "reason": ""}
-                ],
-            }
-        ),
+def test_fact_audit_rechecks_omitted_statement(monkeypatch):
+    checked = []
+
+    def generate(payload, **kwargs):
+        turns = json.loads(payload)["script_statements"]
+        checked.append([turn["id"] for turn in turns])
+        if len(checked) == 1:
+            turns = turns[:1]
+        return json.dumps({"statements": [
+            {"id": turn["id"], "claim": turn["text"], "status": "supported",
+             "evidence_ids": ["S1"], "reason": ""} for turn in turns
+        ]})
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    result = scene_editor.audit_scene(
+        "mark: Первая мысль. Вторая мысль.", "Первая мысль. Вторая мысль.", model="local"
     )
-    with pytest.raises(ValueError, match="every script statement"):
-        scene_editor.audit_scene(
-            "mark: Первая мысль. Вторая мысль.", "Первая мысль. Вторая мысль.", model="local"
-        )
+    assert checked == [[1, 2], [2]]
+    assert [item["claim"] for item in result["supported_claims"]] == [
+        "Первая мысль.", "Вторая мысль."
+    ]
+
+
+def test_fact_audit_treats_repeated_omission_as_unsupported(monkeypatch):
+    calls = []
+
+    def generate(payload, **kwargs):
+        calls.append(json.loads(payload)["script_statements"])
+        return json.dumps({"statements": []})
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    result = scene_editor.audit_scene("mark: Неизвестный факт.", "Источник молчит.", model="local")
+    assert len(calls) == 2
+    assert result["unsupported_claims"] == [{
+        "claim": "Неизвестный факт.",
+        "reason": "Модель пропустила утверждение при проверке фактов.",
+    }]
 
 
 def test_audit_batches_preserve_all_statements_and_complete_source(monkeypatch):
@@ -657,7 +698,7 @@ def test_fixed_audit_schema_retains_exact_runtime_id_checks(monkeypatch, identit
         )
 
     monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
-    with pytest.raises(ValueError, match="every script statement|repeated turn ID"):
+    with pytest.raises(ValueError, match="foreign script statement|repeated turn ID"):
         scene_editor.audit_scene(
             "mark: Первая мысль. Вторая мысль.", "Полный источник.", model="local"
         )

@@ -541,6 +541,44 @@ def test_scene_checkpoint_resumes_without_model_and_invalidates_on_source_change
     assert len(calls) == 2
 
 
+def test_scene_author_retries_truncated_output_with_more_room(monkeypatch):
+    budgets = []
+
+    def generate(*args, **kwargs):
+        budgets.append(kwargs["max_tokens"])
+        if len(budgets) == 1:
+            raise RuntimeError("Model output was truncated by its token/context limit")
+        return '{"turns": [{"speaker": "mark", "text": "Новость."}]}'
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    text, _ = scriptwriter.rewrite_chunked_dialogue_script_draft("### 1. Source\nНовость")
+    assert text == "mark: Новость."
+    assert len(budgets) == 2 and budgets[1] > budgets[0]
+
+
+def test_fact_review_includes_source_two_scenes_before(monkeypatch):
+    from app.llm import scene_editor
+
+    sources = ["### 1. Первая новость", "### 2. Вторая новость", "### 3. Третья новость"]
+    checked = []
+
+    monkeypatch.setattr(
+        scriptwriter,
+        "rewrite_script_draft",
+        lambda *a, **k: '{"turns": [{"speaker": "mark", "text": "Факт."}]}',
+    )
+
+    def audit(script, source, **kwargs):
+        checked.append(source)
+        return {"supported_claims": [{"claim": "Факт."}], "unsupported_claims": []}
+
+    monkeypatch.setattr(scene_editor, "audit_scene", audit)
+    scriptwriter.rewrite_chunked_dialogue_script_draft(
+        "\n\n".join(sources), source_blocks=sources, chunk_size=1, with_review=True
+    )
+    assert checked[2] == "\n\n".join(sources)
+
+
 def test_unresolved_fact_review_blocks_scene_and_saves_audit(tmp_path, monkeypatch):
     from app.llm import scene_editor
 

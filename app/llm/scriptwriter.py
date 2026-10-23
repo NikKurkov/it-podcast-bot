@@ -231,15 +231,25 @@ def rewrite_chunked_dialogue_script_draft(
         )
         rendered_chunk = cached.get("script") if cached else None
         if not isinstance(rendered_chunk, str):
-            response = rewrite_script_draft(
-                prompt,
-                model=model,
-                system_prompt=system_prompt,
-                temperature=temperature,
-                max_tokens=max(400, chunk_words * 10),
-                response_format=author_format,
-                response_path=author_path.with_suffix(".raw.txt") if author_path else None,
-            )
+            for author_attempt in range(2):
+                try:
+                    response = rewrite_script_draft(
+                        prompt,
+                        model=model,
+                        system_prompt=system_prompt,
+                        temperature=temperature,
+                        max_tokens=max(400, chunk_words * (10 if not author_attempt else 20)),
+                        response_format=author_format,
+                        response_path=(
+                            author_path.with_suffix(".raw.txt" if not author_attempt else ".retry.raw.txt")
+                            if author_path else None
+                        ),
+                    )
+                    break
+                except RuntimeError as exc:
+                    if author_attempt or not str(exc).startswith("Model output was truncated"):
+                        raise
+                    logger.warning("Scene %s output was truncated; retrying with more room", index)
             rendered_chunk = _parse_author_dialogue(response)
             save_checkpoint(author_path, key, {"script": rendered_chunk})
         rendered_chunk = _clean_chunk_dialogue(rendered_chunk)
@@ -249,8 +259,8 @@ def rewrite_chunked_dialogue_script_draft(
             from app.llm.scene_editor import audit_scene, review_scene
 
             unresolved = []
-            # Include the adjacent original source when a transition refers back.
-            source_context = "\n\n".join(scene_sources[max(0, index - 2) : index])
+            # The previous scene may itself refer back to its predecessor.
+            source_context = "\n\n".join(scene_sources[max(0, index - 3) : index])
             editor_identity = {
                 "code": Path(__file__).with_name("scene_editor.py").read_text(encoding="utf-8"),
                 "critic_enabled": settings.llm_scene_critic_enabled,
