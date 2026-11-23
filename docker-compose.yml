@@ -1,0 +1,43 @@
+services:
+  podcast:
+    build: .
+    init: true
+    user: "${PODCAST_UID:-1000}:${PODCAST_GID:-1000}"
+    env_file:
+      - "${PODCAST_ENV_FILE:-.env.docker}"
+    environment:
+      LOCAL_LLM_ENGINE: ollama
+      LLM_BASE_URL: http://ollama:11434/v1
+      LLM_API_KEY: ollama
+      OLLAMA_CONTEXT_LENGTH: "${PODCAST_DOCKER_CONTEXT_LENGTH:-8192}"
+      TTS_PROVIDER: silero
+      TTS_DEVICE: cpu
+      LLM_RELEASE_BEFORE_TTS: "false"
+      PUBLISH_TELEGRAM_ON_FINAL: "false"
+    volumes:
+      - "${PODCAST_DATA_DIR:-./data}:/app/data"
+      - ./config:/app/config:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_CONTEXT_LENGTH: "${PODCAST_DOCKER_CONTEXT_LENGTH:-8192}"
+      OLLAMA_NO_CLOUD: "true"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_KEEP_ALIVE: 1m
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  ollama_models:
