@@ -1,0 +1,10 @@
+**
+!Dockerfile
+!requirements.txt
+!app/
+!app/**
+!scripts/
+!scripts/**
+!assets/
+!assets/**
+**/__pycache__/
