@@ -9,7 +9,7 @@
 [![Tests](https://github.com/NikKurkov/it-podcast-bot/actions/workflows/tests.yml/badge.svg)](https://github.com/NikKurkov/it-podcast-bot/actions/workflows/tests.yml)
 [![Release](https://img.shields.io/github/v/release/NikKurkov/it-podcast-bot)](https://github.com/NikKurkov/it-podcast-bot/releases/latest)
 
-[Послушать выпуск](https://t.me/nik_podcast) · [Docker](#docker) · [Запустить без Docker](#быстрый-запуск)
+[Послушать выпуск](https://t.me/nik_podcast) · [Docker](#docker) · [Без Docker](#без-docker)
 
 </div>
 
@@ -17,57 +17,42 @@
 
 Исходные посты остаются рядом со сценарием, чтобы можно было сверить факты. Если тему так и не удалось подтвердить, бот пропускает её и продолжает сборку. После сбоя можно продолжить с сохранённых сцен.
 
-## Docker
+## Быстрый запуск
 
-Для запуска нужен Docker Compose на Linux x86-64. Сценарий и озвучка собираются на CPU. В первый раз Docker скачает образы, а Ollama и Silero загрузят модели.
+Откройте папку проекта и выберите способ запуска. Чтобы собирать новости из своих каналов, перечислите их в `config/channels.txt`. При первом запуске понадобится войти в Telegram. Сценарий и MP3 появятся в `data/episodes/`. Пробный выпуск остаётся на компьютере.
+
+### Docker
+
+На Linux x86-64 нужны Docker Compose и Make.
 
 ```bash
 cp .env.example .env.docker
-mkdir -p data
-export PODCAST_UID="$(id -u)" PODCAST_GID="$(id -g)"
 ```
 
-Впишите Telegram API ID и API Hash в `.env.docker`. Каналы, из которых нужно брать новости, перечислите в `config/channels.txt`.
+Впишите Telegram API ID и API Hash в `.env.docker`, затем выполните команду.
 
 ```bash
-docker compose up -d --wait ollama
-docker compose exec ollama ollama pull qwen2.5:7b-instruct
-docker compose run --rm --build podcast scripts/collect_posts.py --limit 10
-docker compose run --rm podcast
+make docker-quickstart
 ```
 
-В первый раз `collect_posts.py` попросит войти в Telegram. Последняя команда соберёт короткий выпуск и положит сценарий и MP3 в `data/episodes/`. Отправка в Telegram отключена.
+Первая сборка скачает образы и модели.
 
-Для выпуска обычной длины запустите `docker compose run --rm podcast scripts/make_podcast.py --with-music`. Когда закончите, остановите Ollama командой `docker compose stop ollama`.
+### Без Docker
 
-Если у вас уже есть база и выпуски в `data/`, для пробы можно создать отдельную папку и указать её в переменной `PODCAST_DATA_DIR`.
-
-Если Telegram работает через SOCKS-прокси на вашем компьютере, в `.env.docker` укажите его адрес через `host.docker.internal`. Например, `TELEGRAM_PROXY_URL=socks5://host.docker.internal:2080`. Прокси должен принимать подключения из Docker.
-
-## Быстрый запуск
-
-На Linux нужны Python 3.11, `uv`, ffmpeg, systemd и Ollama.
+На Linux нужны Make, `uv`, ffmpeg, systemd и запущенный Ollama на порту 11434.
 
 ```bash
 cp .env.example .env
 ```
 
-Укажите Telegram API ID и API Hash в `.env`, а каналы для сбора новостей — в `config/channels.txt`.
+Впишите Telegram API ID и API Hash в `.env`, затем выполните две команды.
 
 ```bash
 make setup
-make ollama
-ollama pull qwen2.5:7b-instruct
-ollama pull qwen2.5:3b-instruct
-make llm-check
-make collect
-make doctor
-make podcast-preview
+make quickstart
 ```
 
-При первом `make collect` нужно войти в Telegram. `make podcast-preview` соберёт пробный выпуск с аудио без отправки. Файлы будут в `data/episodes/`.
-
-`make setup` пересоздаёт `.venv` для CPU. В существующем окружении можно установить зависимости командой `uv pip install --python .venv/bin/python -r requirements-dev.txt`.
+`make setup` создаёт окружение Python. Если оно уже настроено, сразу запускайте `make quickstart`.
 
 ## Команды
 
@@ -86,5 +71,7 @@ make podcast-preview
 ## Настройки и документация
 
 Пример настроек есть в [`.env.example`](.env.example). Стиль реплик задаётся в [`config/podcast_style.md`](config/podcast_style.md), произношение — в [`config/pronunciation_ru.txt`](config/pronunciation_ru.txt). По умолчанию речь озвучивает Silero на CPU. Доступны XTTS для речи и llama.cpp для сценария.
+
+Для отдельной папки с данными Docker задайте `PODCAST_DATA_DIR` в окружении перед запуском Make. Если Telegram нужен SOCKS-прокси на хосте, укажите его в `.env.docker`, например `TELEGRAM_PROXY_URL=socks5://host.docker.internal:2080`.
 
 [Ручная сборка и публикация](docs/mvp_workflow.md) · [Архитектура и память](docs/architecture.md) · [Модели](docs/local-model-manifest.json) · [Изменения](CHANGELOG.md)

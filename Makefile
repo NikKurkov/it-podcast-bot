@@ -61,6 +61,21 @@ podcast-publish:
 podcast-preview:
 	$(BOUNDED_PYTHON) scripts/make_podcast.py --preview --with-music
 
+.PHONY: quickstart docker-quickstart
+quickstart:
+	ollama pull qwen2.5:7b-instruct
+	$(MAKE) collect
+	$(BOUNDED_PYTHON) scripts/make_podcast.py --preview --with-music --no-collect
+
+docker-quickstart: export PODCAST_UID := $(shell id -u)
+docker-quickstart: export PODCAST_GID := $(shell id -g)
+docker-quickstart:
+	mkdir -p "$(or $(PODCAST_DATA_DIR),data)"
+	docker compose up -d --wait ollama
+	docker compose exec -T ollama ollama pull qwen2.5:7b-instruct
+	docker compose run --rm --build podcast scripts/collect_posts.py --limit 10
+	docker compose run --rm podcast scripts/make_podcast.py --preview --with-music --no-collect
+
 podcast-script:
 	$(BOUNDED_PYTHON) scripts/make_podcast.py --script-only --no-collect
 
