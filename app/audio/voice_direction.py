@@ -9,4 +9,5 @@ def apply_voice_direction(
     *,
     base_pause_after_ms: int,
 ) -> DialogueLine:
-    return DialogueLine(speaker=speaker, text=text, pause_after_ms=base_pause_after_ms)
+    pause = min(base_pause_after_ms, 300) if len(text) <= 65 else base_pause_after_ms
+    return DialogueLine(speaker=speaker, text=text, pause_after_ms=pause)

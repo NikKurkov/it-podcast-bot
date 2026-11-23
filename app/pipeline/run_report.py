@@ -1,8 +1,11 @@
 import json
+import math
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.audio.inspection import inspect_audio_file
 from app.pipeline.episode_package import EpisodePackage
 from app.podcast.script_quality import quality_gate_allows_tts
 
@@ -19,6 +22,7 @@ def write_run_report(
     publication_checks: list[dict[str, str]] | None = None,
     selection_diagnostics: dict[str, Any] | None = None,
     error: str | None = None,
+    resume_slug: str | None = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     report = {
@@ -33,6 +37,8 @@ def write_run_report(
         "selection_diagnostics": selection_diagnostics or {},
         "error": error,
     }
+    if resume_slug is not None:
+        report["resume_slug"] = resume_slug
     if package:
         report["files"] = {
             "metadata": str(package.metadata_path),
@@ -43,10 +49,13 @@ def write_run_report(
             "audio_report": str(package.path / "audio_report.json"),
         }
     output_path = output_dir / "run_report.json"
-    output_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     latest_path = Path("data/logs/latest_run_report.json")
     latest_path.parent.mkdir(parents=True, exist_ok=True)
-    latest_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    serialized = json.dumps(report, ensure_ascii=False, indent=2)
+    for path in (output_path, latest_path):
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(serialized, encoding="utf-8")
+        temporary.replace(path)
     return output_path
 
 
@@ -93,10 +102,14 @@ def _audio_check(package: EpisodePackage) -> dict[str, str]:
     audio_path = package.audio_mp3_path
     if not audio_path or not audio_path.exists():
         return {"name": "audio_mp3", "status": "error", "detail": "missing"}
-    size_mb = audio_path.stat().st_size / 1024 / 1024
-    if size_mb < 0.2:
-        return {"name": "audio_mp3", "status": "error", "detail": f"too small: {size_mb:.2f} MB"}
-    return {"name": "audio_mp3", "status": "ok", "detail": f"{size_mb:.2f} MB"}
+    try:
+        info = inspect_audio_file(audio_path)
+    except (OSError, RuntimeError, subprocess.CalledProcessError, ValueError):
+        return {"name": "audio_mp3", "status": "error", "detail": "could not inspect audio"}
+    duration = info.duration_seconds or 0
+    if info.codec != "mp3" or not math.isfinite(duration) or duration <= 0:
+        return {"name": "audio_mp3", "status": "error", "detail": "invalid MP3 stream or duration"}
+    return {"name": "audio_mp3", "status": "ok", "detail": f"{duration:.1f} s"}
 
 
 def _script_quality_check(package: EpisodePackage) -> dict[str, str]:

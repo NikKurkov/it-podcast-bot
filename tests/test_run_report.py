@@ -62,3 +62,28 @@ def _package(root: Path) -> EpisodePackage:
         audio_voice_wav_path=root / "audio_voice.wav",
         metadata_path=root / "metadata.json",
     )
+
+
+def test_publication_gate_allows_valid_short_mp3_and_blocks_large_corrupt_file(tmp_path):
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        pytest.skip("audio tools unavailable")
+    package = _package(tmp_path)
+    subprocess.run(
+        [
+            "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+            str(package.audio_mp3_path),
+        ],
+        check=True,
+    )
+
+    checks = publication_gate_checks(package, selected_count=1, requested_top=6)
+    assert publication_allowed(checks)
+
+    package.audio_mp3_path.write_bytes(b"invalid" * 40000)
+    checks = publication_gate_checks(package, selected_count=1, requested_top=6)
+    assert not publication_allowed(checks)

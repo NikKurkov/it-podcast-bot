@@ -579,6 +579,57 @@ def test_fact_review_includes_source_two_scenes_before(monkeypatch):
     assert checked[2] == "\n\n".join(sources)
 
 
+def test_fact_review_drops_prior_sources_when_complete_context_does_not_fit(monkeypatch):
+    from app.llm import scene_editor
+
+    sources = ["### 1. Первая новость", "### 2. Вторая новость"]
+    checked = []
+    monkeypatch.setattr(
+        scriptwriter,
+        "rewrite_script_draft",
+        lambda *a, **k: '{"turns": [{"speaker": "mark", "text": "Факт."}]}',
+    )
+
+    def audit(script, source, **kwargs):
+        checked.append(source)
+        if source == "\n\n".join(sources):
+            raise ValueError(
+                "A complete source exceeds model context. Increase OLLAMA_CONTEXT_LENGTH; text was not truncated."
+            )
+        return {"supported_claims": [{"claim": "Факт."}], "unsupported_claims": []}
+
+    monkeypatch.setattr(scene_editor, "audit_scene", audit)
+    text, _ = scriptwriter.rewrite_chunked_dialogue_script_draft(
+        "\n\n".join(sources), source_blocks=sources, chunk_size=1, with_review=True
+    )
+    assert text == "mark: Факт.\nmark: Факт."
+    assert checked == [sources[0], "\n\n".join(sources), sources[1]]
+
+
+def test_fact_review_keeps_nearest_prior_source_when_oldest_does_not_fit(monkeypatch):
+    from app.llm import scene_editor
+
+    sources = ["### 1. Первая", "### 2. Вторая", "### 3. Третья"]
+    checked = []
+    monkeypatch.setattr(
+        scriptwriter,
+        "rewrite_script_draft",
+        lambda *a, **k: '{"turns": [{"speaker": "mark", "text": "Факт."}]}',
+    )
+
+    def audit(script, source, **kwargs):
+        checked.append(source)
+        if source == "\n\n".join(sources):
+            raise ValueError("A complete source exceeds model context. No source was truncated.")
+        return {"supported_claims": [{"claim": "Факт."}], "unsupported_claims": []}
+
+    monkeypatch.setattr(scene_editor, "audit_scene", audit)
+    scriptwriter.rewrite_chunked_dialogue_script_draft(
+        "\n\n".join(sources), source_blocks=sources, chunk_size=1, with_review=True
+    )
+    assert checked[-2:] == ["\n\n".join(sources), "\n\n".join(sources[1:])]
+
+
 def test_unresolved_fact_review_blocks_scene_and_saves_audit(tmp_path, monkeypatch):
     from app.llm import scene_editor
 
@@ -736,3 +787,198 @@ def test_corrected_scene_must_pass_a_fresh_audit(monkeypatch):
     assert text == "nika: Срок не указан."
     assert [event[0] for event in events] == ["audit", "edit", "audit"]
     assert events[-1][1] == text
+
+
+def test_malformed_author_uses_short_version_and_audits_it(monkeypatch):
+    import json
+
+    from app.llm import scene_editor
+
+    calls = []
+    first = "### 1. Новая версия доступна."
+    second = "### 2. Документацию обновили."
+
+    def generate(payload, **kwargs):
+        scene = json.loads(payload)
+        calls.append(scene)
+        if scene["source_material"] == first and "required_corrections" not in scene:
+            return '{"turns":[{"speaker":"unknown","text":"Некорректная реплика."}]}'
+        fact = (
+            "Вышла новая версия."
+            if scene["source_material"] == first
+            else "Документацию обновили."
+        )
+        return json.dumps({"turns": [
+            {"speaker": "mark", "text": fact},
+            {"speaker": "nika", "text": "Где об этом сообщили?"},
+        ]})
+
+    audited = []
+
+    def audit(script, source, **kwargs):
+        audited.append((script, source))
+        return {
+            "supported_claims": [{"claim": script, "quotes": [source.splitlines()[-1]]}],
+            "unsupported_claims": [],
+        }
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    monkeypatch.setattr(scene_editor, "audit_scene", audit)
+    included = []
+    text, _ = scriptwriter.rewrite_chunked_dialogue_script_draft(
+        "", source_blocks=[first, second], chunk_size=1, with_review=True,
+        included_source_indexes=included,
+    )
+
+    assert len(calls) == 4
+    assert included == [0, 1]
+    assert audited[0][1] == first
+    assert "Вышла новая версия." in text
+    assert "Документацию обновили." in text
+    assert "Некорректная реплика." not in text
+
+
+def test_packaged_scene_requires_evidence_for_each_current_story(monkeypatch):
+    import json
+
+    from app.llm import scene_editor
+
+    first = "Первый факт подтверждён."
+    second = "Вторая тема требует проверки."
+
+    def generate(payload, **kwargs):
+        source = json.loads(payload)["source_material"]
+        text = second if source == second else first
+        return json.dumps({"turns": [
+            {"speaker": "mark", "text": text},
+            {"speaker": "nika", "text": "На что это влияет?"},
+        ]})
+
+    def audit(script, source, **kwargs):
+        if source == second:
+            raise scene_editor.SceneAuditRejected("No grounded claims.")
+        return {
+            "supported_claims": [{"claim": first, "quotes": [first]}],
+            "unsupported_claims": [],
+        }
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    monkeypatch.setattr(scene_editor, "audit_scene", audit)
+    included = []
+    text, _ = scriptwriter.rewrite_chunked_dialogue_script_draft(
+        "", source_blocks=[first, second], chunk_size=2,
+        with_review=True, included_source_indexes=included,
+    )
+    assert included == [0]
+    assert first in text and second not in text
+
+
+def test_packaged_episode_stops_if_no_verified_scene_remains(monkeypatch):
+    from app.llm import scene_editor
+
+    monkeypatch.setattr(
+        scriptwriter, "rewrite_script_draft",
+        lambda *args, **kwargs: (
+            '{"turns":[{"speaker":"mark","text":"Новость."},'
+            '{"speaker":"nika","text":"Что изменилось?"}]}'
+        ),
+    )
+
+    def no_grounded_fact(*args, **kwargs):
+        raise scene_editor.SceneAuditRejected("No grounded claims.")
+
+    monkeypatch.setattr(scene_editor, "audit_scene", no_grounded_fact)
+    included = []
+    with pytest.raises(RuntimeError, match="No source-verified scenes"):
+        scriptwriter.rewrite_chunked_dialogue_script_draft(
+            "", source_blocks=["Неизвестное событие."], with_review=True,
+            included_source_indexes=included,
+        )
+    assert included == []
+
+
+def test_packaged_monologue_is_recovered_as_dialogue(monkeypatch):
+    import json
+
+    from app.llm import scene_editor
+
+    source = "Разработчик обновил документацию."
+
+    def generate(payload, **kwargs):
+        turns = [{"speaker": "gleb", "text": source}]
+        if "required_corrections" in json.loads(payload):
+            turns.append({"speaker": "nika", "text": "Что поменялось для читателя?"})
+        return json.dumps({"turns": turns})
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    monkeypatch.setattr(
+        scene_editor, "audit_scene",
+        lambda *args, **kwargs: {
+            "supported_claims": [{"claim": source, "quotes": [source]}],
+            "unsupported_claims": [],
+        },
+    )
+    included = []
+    _, validation = scriptwriter.rewrite_chunked_dialogue_script_draft(
+        "", source_blocks=[source], with_review=True, included_source_indexes=included,
+    )
+    assert set(validation.speakers) == {"gleb", "nika"}
+    assert included == [0]
+
+
+@pytest.mark.parametrize("copied_by_editor", [False, True])
+def test_copied_scene_block_is_removed_before_factcheck(monkeypatch, copied_by_editor):
+    import json
+
+    from app.llm import scene_editor
+
+    sources = ["Первая новость.", "Вторая новость."]
+    previous = [
+        ("mark", "Команда опубликовала полное описание того, как обновление меняет работу редактора."),
+        ("gleb", "Важная оговорка относится к версии, которую тестируют только на одном устройстве."),
+        ("nika", "Понятно."),
+    ]
+    new_turns = [
+        ("mark", "Документация второй программы пополнилась примерами для начинающих."),
+        ("nika", "Понятно."),
+        ("gleb", "Какой из примеров пригодится первым?"),
+    ]
+    prompts = []
+    audited = []
+
+    def author(payload, **kwargs):
+        scene = json.loads(payload)
+        prompts.append(scene)
+        lines = previous if scene["scene"]["index"] == 1 else (
+            new_turns if copied_by_editor else previous + new_turns
+        )
+        return json.dumps({"turns": [{"speaker": who, "text": text} for who, text in lines]})
+
+    def audit(script, source, **kwargs):
+        audited.append(script)
+        if copied_by_editor and len(audited) == 2:
+            return {"supported_claims": [], "unsupported_claims": [{"claim": new_turns[0][1]}]}
+        return {
+            "supported_claims": [{"claim": script, "quotes": [source.splitlines()[-1]]}],
+            "unsupported_claims": [],
+        }
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", author)
+    monkeypatch.setattr(scene_editor, "audit_scene", audit)
+    monkeypatch.setattr(scene_editor, "review_scene", lambda *args, **kwargs: {
+        "script": "\n".join(f"{who}: {text}" for who, text in previous + new_turns),
+        "unresolved_issues": [],
+    })
+    included = []
+    result, _ = scriptwriter.rewrite_chunked_dialogue_script_draft(
+        "", source_blocks=sources, chunk_size=1, with_review=True, included_source_indexes=included,
+    )
+
+    assert prompts[1]["source_material"] == sources[1]
+    context = prompts[1]["previous_scene_for_continuity_only"]
+    assert context == "gleb: " + previous[1][1]
+    assert len(audited) == (3 if copied_by_editor else 2)
+    assert audited[-1] == "\n".join(f"{who}: {text}" for who, text in new_turns)
+    assert result.count(previous[0][1]) == 1
+    assert result.count("nika: Понятно.") == 2
+    assert included == [0, 1]

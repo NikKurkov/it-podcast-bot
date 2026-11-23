@@ -496,10 +496,11 @@ def test_fabricated_source_quote_does_not_pass_audit(monkeypatch):
             }
         ),
     )
-    with pytest.raises(ValueError, match="evidence IDs"):
-        scene_editor.audit_scene(
-            "mark: Продукт меняет прошивку.", "Способ установки не описан.", model="local"
-        )
+    result = scene_editor.audit_scene(
+        "mark: Продукт меняет прошивку.", "Способ установки не описан.", model="local"
+    )
+    assert result["supported_claims"] == []
+    assert result["unsupported_claims"][0]["claim"] == "Продукт меняет прошивку."
 
 
 def test_fact_audit_preserves_model_reported_unsupported_claim(monkeypatch):
@@ -542,8 +543,9 @@ def test_audit_rejects_unbounded_justification_instead_of_accepting_a_runaway(mo
             }
         ),
     )
-    with pytest.raises(ValueError, match="protocol limit"):
-        scene_editor.audit_scene("mark: Новость объявлена.", "Новость объявлена.", model="local")
+    result = scene_editor.audit_scene("mark: Новость объявлена.", "Новость объявлена.", model="local")
+    assert result["supported_claims"] == []
+    assert result["unsupported_claims"][0]["claim"] == "Новость объявлена."
 
 
 def test_audit_does_not_accept_repeated_source_ids_as_additional_evidence(monkeypatch):
@@ -564,8 +566,9 @@ def test_audit_does_not_accept_repeated_source_ids_as_additional_evidence(monkey
             }
         ),
     )
-    with pytest.raises(ValueError, match="repeats"):
-        scene_editor.audit_scene("mark: Новость объявлена.", "Новость объявлена.", model="local")
+    result = scene_editor.audit_scene("mark: Новость объявлена.", "Новость объявлена.", model="local")
+    assert result["supported_claims"] == []
+    assert result["unsupported_claims"][0]["claim"] == "Новость объявлена."
 
 
 def test_fact_audit_rechecks_omitted_statement(monkeypatch):
@@ -591,6 +594,65 @@ def test_fact_audit_rechecks_omitted_statement(monkeypatch):
     ]
 
 
+def test_fact_audit_rechecks_changed_claim_without_accepting_it(monkeypatch):
+    checked = []
+
+    def generate(payload, **kwargs):
+        turns = json.loads(payload)["script_statements"]
+        checked.append([turn["id"] for turn in turns])
+        return json.dumps({"statements": [
+            {"id": turn["id"], "claim": "Другой текст." if len(checked) == 1 and turn["id"] == 2 else turn["text"],
+             "status": "supported", "evidence_ids": ["S1"], "reason": ""}
+            for turn in turns
+        ]})
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    result = scene_editor.audit_scene(
+        "mark: Первый факт. Второй факт.", "Первый факт. Второй факт.", model="local"
+    )
+    assert checked == [[1, 2], [2]]
+    assert [item["claim"] for item in result["supported_claims"]] == [
+        "Первый факт.", "Второй факт."
+    ]
+
+
+def test_fact_audit_repeated_changed_claim_is_unverified(monkeypatch):
+    calls = []
+
+    def generate(payload, **kwargs):
+        calls.append(json.loads(payload)["script_statements"])
+        return json.dumps({"statements": [{
+            "id": 1, "claim": "Подменённый факт.", "status": "supported",
+            "evidence_ids": ["S1"], "reason": ""
+        }]})
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    result = scene_editor.audit_scene("mark: Исходный факт.", "Исходный факт.", model="local")
+    assert len(calls) == 2
+    assert result["supported_claims"] == []
+    assert result["unsupported_claims"][0]["claim"] == "Исходный факт."
+
+
+def test_fact_audit_recovers_from_invalid_json(monkeypatch):
+    calls = []
+
+    def generate(payload, **kwargs):
+        calls.append(payload)
+        if len(calls) == 1:
+            return "not json"
+        return json.dumps({"statements": [{
+            "id": 1, "claim": "Подтверждённый факт.", "status": "supported",
+            "evidence_ids": ["S1"], "reason": ""
+        }]})
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    result = scene_editor.audit_scene(
+        "mark: Подтверждённый факт.", "Подтверждённый факт.", model="local"
+    )
+    assert len(calls) == 2
+    assert result["supported_claims"][0]["claim"] == "Подтверждённый факт."
+
+
 def test_fact_audit_treats_repeated_omission_as_unsupported(monkeypatch):
     calls = []
 
@@ -603,7 +665,7 @@ def test_fact_audit_treats_repeated_omission_as_unsupported(monkeypatch):
     assert len(calls) == 2
     assert result["unsupported_claims"] == [{
         "claim": "Неизвестный факт.",
-        "reason": "Модель пропустила утверждение при проверке фактов.",
+        "reason": "Модель не выдала корректный вердикт при проверке фактов.",
     }]
 
 
@@ -698,10 +760,12 @@ def test_fixed_audit_schema_retains_exact_runtime_id_checks(monkeypatch, identit
         )
 
     monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
-    with pytest.raises(ValueError, match="foreign script statement|repeated turn ID"):
-        scene_editor.audit_scene(
-            "mark: Первая мысль. Вторая мысль.", "Полный источник.", model="local"
-        )
+    result = scene_editor.audit_scene(
+        "mark: Первая мысль. Вторая мысль.", "Полный источник.", model="local"
+    )
+    assert len(result["supported_claims"]) + len(result["unsupported_claims"]) == 2
+    assert all(item["claim"] in {"Первая мысль.", "Вторая мысль."}
+               for item in result["supported_claims"])
 
 
 def test_audit_keeps_dialogue_scope_across_statement_batches(monkeypatch):
@@ -745,6 +809,30 @@ def test_audit_preflights_complete_context_before_calling_model(monkeypatch):
     monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
     with pytest.raises(ValueError, match="complete source exceeds"):
         scene_editor.audit_scene("nika: Запуск завтра.", "Полный источник " * 5000, model="local")
+
+
+def test_fact_audit_keeps_full_source_when_small_output_reserve_fits(monkeypatch):
+    monkeypatch.setattr(scriptwriter.settings, "ollama_context_length", 10000)
+
+    def generate(payload, **kwargs):
+        assert len(json.loads(payload)["source_evidence"]) == 370
+        return json.dumps(
+            {
+                "statements": [
+                    {
+                        "id": 1,
+                        "claim": "Факт.",
+                        "reason": "",
+                        "evidence_ids": ["S1"],
+                        "status": "supported",
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    result = scene_editor.audit_scene("mark: Факт.", "Факт. " * 370, model="local")
+    assert len(result["supported_claims"]) == 1
 
 
 @pytest.mark.parametrize("weight", [None, True, 0, -1, "2", float("nan"), float("inf")])
@@ -833,10 +921,11 @@ def test_fact_audit_cannot_attach_a_verdict_to_a_different_statement(monkeypatch
             }
         ),
     )
-    with pytest.raises(ValueError, match="different statement"):
-        scene_editor.audit_scene(
-            "mark: Исходное утверждение.", "Исходное утверждение.", model="local"
-        )
+    result = scene_editor.audit_scene(
+        "mark: Исходное утверждение.", "Исходное утверждение.", model="local"
+    )
+    assert result["supported_claims"] == []
+    assert result["unsupported_claims"][0]["claim"] == "Исходное утверждение."
 
 
 def test_discussion_does_not_require_news_evidence_but_source_facts_still_do(monkeypatch):
@@ -871,3 +960,67 @@ def test_discussion_does_not_require_news_evidence_but_source_facts_still_do(mon
     )
     assert len(result["supported_claims"]) == 1
     assert not result["unsupported_claims"]
+
+
+def test_editor_recovers_from_unchanged_scene_with_validation_feedback(monkeypatch, tmp_path):
+    requests = []
+    original = "mark: Уже выпущен."
+    corrected = "mark: Дата выпуска пока не объявлена."
+
+    def generate(payload, **kwargs):
+        data = json.loads(payload)
+        requests.append((data, kwargs.get("response_path")))
+        if len(requests) == 1:
+            return json.dumps({"script": original, "changes": ["Всё исправлено"],
+                               "unresolved_issues": []})
+        assert "unchanged" in data["previous_error"]
+        assert data["source"] == "Дата выпуска не объявлена."
+        assert data["required_corrections"] == [{"claim": "", "reason": "Неверная дата"}]
+        return json.dumps({"script": corrected, "changes": ["Убрана неверная дата"],
+                           "unresolved_issues": []})
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    result = scene_editor.review_scene(
+        original, "Дата выпуска не объявлена.", model="local", target_words=100,
+        feedback=[{"claim": "", "reason": "Неверная дата"}],
+        response_path=tmp_path / "review.json",
+    )
+    assert result["script"] == corrected
+    assert [path.name for _, path in requests] == ["review.json", "review.retry.json"]
+
+
+def test_editor_stops_after_bounded_unchanged_recovery(monkeypatch):
+    calls = []
+
+    def generate(payload, **kwargs):
+        calls.append(payload)
+        return json.dumps({"script": "mark: Уже выпущен.", "changes": [],
+                           "unresolved_issues": []})
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    with pytest.raises(ValueError, match="unchanged"):
+        scene_editor.review_scene(
+            "mark: Уже выпущен.", "Дата неизвестна.", model="local", target_words=100,
+            feedback=[{"claim": "", "reason": "Неверная дата"}],
+        )
+    assert len(calls) == 2
+
+
+def test_fact_audit_retries_truncated_result_without_accepting_partial_output(monkeypatch):
+    calls = []
+
+    def generate(payload, **kwargs):
+        calls.append(payload)
+        if len(calls) == 1:
+            raise RuntimeError("Model output was truncated by its token/context limit")
+        return json.dumps({"statements": [{
+            "id": 1, "claim": "Подтверждённый факт.", "status": "supported",
+            "evidence_ids": ["S1"], "reason": ""
+        }]})
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    result = scene_editor.audit_scene(
+        "mark: Подтверждённый факт.", "Подтверждённый факт.", model="local"
+    )
+    assert len(calls) == 2
+    assert result["supported_claims"][0]["claim"] == "Подтверждённый факт."

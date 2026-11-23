@@ -52,16 +52,9 @@ def _speaker_for_character(
     silero_speaker: str,
     provider_name: str | None = None,
 ) -> str:
-    if _provider_for_character(provider_name) != "xtts":
-        return silero_speaker
-
-    explicit_paths = {
-        "mark": settings.xtts_mark_voice,
-        "gleb": settings.xtts_gleb_voice,
-        "nika": settings.xtts_nika_voice,
-        "artem": settings.xtts_artem_voice,
-    }
-    return explicit_paths.get(character_key) or character_key
+    provider = _provider_for_character(provider_name)
+    override = getattr(settings, f"{provider}_{character_key}_voice", None)
+    return override or (silero_speaker if provider == "silero" else character_key)
 
 
 def get_voice_config(character: str, provider_name: str | None = None) -> dict:
