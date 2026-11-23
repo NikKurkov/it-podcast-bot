@@ -51,7 +51,6 @@ def main() -> None:
 
     print(f"Script quality report: {report_path}")
     print(f"  lines: {report['lines_count']}")
-    print(f"  transitions: {report['transition_lines']}")
     print(f"  warnings: {', '.join(report['warnings']) if report['warnings'] else 'none'}")
     print(f"  tts_ready: {allowed}")
     if blocking:

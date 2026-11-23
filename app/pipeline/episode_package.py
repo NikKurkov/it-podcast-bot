@@ -7,7 +7,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.db.models import TelegramPost
-from app.db.repositories.episodes import record_episode_package
+from app.db.repositories.episodes import get_episode_by_slug, record_episode_package
 from app.db.repositories.posts import get_selected_posts
 from app.audio.assembler import assemble_podcast
 from app.audio.dialogue import script_to_dialogue_lines
@@ -30,6 +30,7 @@ from app.pipeline.daily_digest import (
     export_digest_json,
     export_digest_markdown,
 )
+from app.pipeline.episode_history import is_published_episode
 from app.pipeline.script_draft import export_script_markdown
 from app.pipeline.publication import write_episode_metadata, write_show_notes
 from app.pipeline.research import research_posts
@@ -52,6 +53,7 @@ class EpisodePackage:
     audio_mp3_path: Path | None
     audio_voice_wav_path: Path | None
     metadata_path: Path
+    posts_count: int | None = None
 
 
 def create_episode_package(
@@ -71,20 +73,16 @@ def create_episode_package(
     target_minutes: float | None = None,
     research: bool | None = None,
     ordered_post_ids: list[int] | None = None,
+    resume: bool = False,
 ) -> EpisodePackage:
+    if resume and slug is None:
+        raise ValueError("Resuming a package requires its slug.")
     package_title = title or f"IT podcast {datetime.now(timezone.utc).date().isoformat()}"
     package_path = Path("data/episodes") / _build_package_slug(slug)
-    package_path.mkdir(parents=True, exist_ok=False)
+    if not resume:
+        package_path.mkdir(parents=True, exist_ok=False)
 
     with exclusive_lock(package_path / ".package.lock", "This episode package is busy."):
-        posts = get_selected_posts(session, limit=limit)
-        if ordered_post_ids is not None:
-            by_id = {post.id: post for post in posts}
-            if set(ordered_post_ids) != set(by_id) or len(ordered_post_ids) != len(by_id):
-                raise ValueError("Editorial order must contain every selected post exactly once.")
-            posts = [by_id[post_id] for post_id in ordered_post_ids]
-        digest_items = [_post_to_digest_item(post) for post in posts]
-
         digest_markdown_path = package_path / "digest.md"
         selected_posts_path = package_path / "selected_posts.json"
         script_draft_path = package_path / "script_draft.md"
@@ -102,28 +100,68 @@ def create_episode_package(
         episode_metadata_path = package_path / "episode_metadata.json"
         metadata_path = package_path / "metadata.json"
 
+        blocks_path = package_path / "source_blocks.json"
+        snapshot_path = package_path / "source_posts.json"
+        research_path = package_path / "source_research.json"
+        research_sources = {}
+        if resume:
+            episode = get_episode_by_slug(session, package_path.name)
+            if (
+                (package_path / "telegram_publish.json").exists()
+                or is_published_episode(package_path)
+                or (episode is not None and episode.status == "published")
+            ):
+                raise ValueError("A published package cannot be resumed.")
+            digest_items = [
+                DigestItem(**{**item, "message_date": datetime.fromisoformat(item["message_date"])})
+                for item in json.loads(snapshot_path.read_text(encoding="utf-8"))
+            ]
+            source_blocks = json.loads(blocks_path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(source_blocks, list)
+                or len(source_blocks) != len(digest_items)
+                or not all(isinstance(block, str) and block.strip() for block in source_blocks)
+            ):
+                raise ValueError("The source snapshot does not match the episode source blocks.")
+            if research_path.is_file():
+                research_sources = {
+                    int(key): value
+                    for key, value in json.loads(research_path.read_text(encoding="utf-8")).items()
+                }
+        else:
+            posts = get_selected_posts(session, limit=limit)
+            if ordered_post_ids is not None:
+                by_id = {post.id: post for post in posts}
+                if set(ordered_post_ids) != set(by_id) or len(ordered_post_ids) != len(by_id):
+                    raise ValueError("Editorial order must contain every selected post exactly once.")
+                posts = [by_id[post_id] for post_id in ordered_post_ids]
+            digest_items = [_post_to_digest_item(post) for post in posts]
+            if llm_profile and (settings.research_enabled if research is None else research):
+                research_sources = research_posts(posts, research_path)
+            source_blocks = export_script_markdown(
+                posts, script_draft_path, package_title, research=research_sources
+            )
+            blocks_path.write_text(
+                json.dumps(source_blocks, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            temporary_snapshot = snapshot_path.with_suffix(".tmp")
+            export_digest_json(digest_items, temporary_snapshot)
+            temporary_snapshot.replace(snapshot_path)
         export_digest_markdown(digest_items, digest_markdown_path)
         export_digest_json(digest_items, selected_posts_path)
-        research_sources = {}
-        if llm_profile and (settings.research_enabled if research is None else research):
-            research_sources = research_posts(posts, package_path / "source_research.json")
-        source_blocks = export_script_markdown(
-            posts, script_draft_path, package_title, research=research_sources
-        )
-        (package_path / "source_blocks.json").write_text(
-            json.dumps(source_blocks, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
 
         llm_model = None
         script_validation_issues = []
         script_editor_validation_issues = []
         script_editor_applied = False
+        skipped_post_ids = []
         if llm_profile:
             llm_model = model_for_profile(llm_profile)
             draft_text = script_draft_path.read_text(encoding="utf-8")
             if dialogue_script:
                 script_generation_model = llm_model
                 if settings.llm_chunked_script_enabled:
+                    included_source_indexes: list[int] = []
                     script_generation_model = settings.llm_chunked_model or llm_model
                     (package_path / "script_generation.json").write_text(
                         json.dumps(
@@ -148,7 +186,20 @@ def create_episode_package(
                         with_review=settings.llm_script_editor_enabled,
                         checkpoint_dir=package_path / "script_scenes",
                         source_blocks=source_blocks,
+                        included_source_indexes=included_source_indexes,
                     )
+                    if included_source_indexes and len(included_source_indexes) < len(digest_items):
+                        included = set(included_source_indexes)
+                        skipped_post_ids = [
+                            item.post_id for i, item in enumerate(digest_items) if i not in included
+                        ]
+                        digest_items = [digest_items[i] for i in included_source_indexes]
+                        research_sources = {
+                            item.post_id: research_sources[item.post_id]
+                            for item in digest_items if item.post_id in research_sources
+                        }
+                        export_digest_markdown(digest_items, digest_markdown_path)
+                        export_digest_json(digest_items, selected_posts_path)
                 else:
                     llm_text, validation = rewrite_validated_dialogue_script_draft(
                         draft_text,
@@ -197,6 +248,8 @@ def create_episode_package(
                     llm_text, target_minutes=target_minutes
                 )
                 llm_text = postprocess_result.script_text
+                if skipped_post_ids:
+                    postprocess_result.report["skipped_post_ids"] = skipped_post_ids
                 write_script_quality_report(postprocess_result.report, script_quality_report_path)
             else:
                 llm_text = rewrite_script_draft(draft_text, model=llm_model)
@@ -270,8 +323,9 @@ def create_episode_package(
         metadata = {
             "title": package_title,
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "posts_count": len(posts),
-            "post_ids": [post.id for post in posts],
+            "posts_count": len(digest_items),
+            "post_ids": [item.post_id for item in digest_items],
+            "skipped_post_ids": skipped_post_ids,
             "llm_profile": llm_profile,
             "target_minutes": target_minutes or settings.podcast_target_minutes,
             "source_research": research_sources,
@@ -353,7 +407,7 @@ def create_episode_package(
             slug=package_path.name,
             title=package_title,
             package_path=str(package_path),
-            post_ids=[post.id for post in posts],
+            post_ids=[item.post_id for item in digest_items],
             audio_path=str(audio_mp3_path) if audio_mp3_path and audio_mp3_path.exists() else None,
             metadata_path=str(metadata_path),
         )
@@ -368,6 +422,7 @@ def create_episode_package(
             audio_mp3_path=audio_mp3_path,
             audio_voice_wav_path=audio_voice_wav_path,
             metadata_path=metadata_path,
+            posts_count=len(digest_items),
         )
 
 

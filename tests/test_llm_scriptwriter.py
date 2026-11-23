@@ -165,6 +165,8 @@ def test_rewrite_chunked_dialogue_script_draft_generates_by_news_blocks(monkeypa
 
     def fake_rewrite(prompt, *args, **kwargs):
         calls.append(prompt)
+        if len(calls) == 2:
+            return '{"turns": [{"speaker": "mark", "text": "Теперь о третьем факте."}, {"speaker": "nika", "text": "Он касается другой функции."}]}'
         return '{"turns": [{"speaker": "mark", "text": "Смотрим на конкретный факт."}, {"speaker": "nika", "text": "Здесь важно не потерять смысл новости."}, {"speaker": "gleb", "text": "Красивый анонс не отменяет проверки."}, {"speaker": "artem", "text": "Практический вывод — фиксируем ограничения."}]}'
 
     monkeypatch.setattr(scriptwriter, "rewrite_script_draft", fake_rewrite)
@@ -597,3 +599,32 @@ def test_author_schema_preserves_complete_turns_and_active_speaker_choice(tmp_pa
     assert "maxItems" not in schema["properties"]["turns"]
     assert (tmp_path / "001_draft.raw.txt").read_text() == response
     assert json.loads((tmp_path / "001_draft.json").read_text())["result"]["script"] == script
+
+
+def test_chunk_author_retries_when_the_entire_scene_was_copied(monkeypatch):
+    import json
+
+    previous = [
+        {"speaker": "mark", "text": "Разработчик обновил документацию и добавил новые примеры."},
+        {"speaker": "nika", "text": "Эти примеры показывают, как подготовить проект к первому запуску."},
+    ]
+    new = [
+        {"speaker": "mark", "text": "Во второй программе изменили окно поиска."},
+        {"speaker": "gleb", "text": "Что теперь видит пользователь?"},
+    ]
+    prompts = []
+
+    def generate(payload, **kwargs):
+        prompts.append(json.loads(payload))
+        return json.dumps({"turns": new if len(prompts) == 3 else previous})
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", generate)
+    script, validation = scriptwriter.rewrite_chunked_dialogue_script_draft(
+        "", source_blocks=["Документацию обновили.", "Окно поиска изменили."], chunk_size=1,
+    )
+
+    assert [prompt["scene"]["index"] for prompt in prompts] == [1, 2, 2]
+    assert "Предыдущий ответ не содержал новых реплик." in prompts[-1]["task"]
+    assert script.count(previous[0]["text"]) == 1
+    assert new[0]["text"] in script
+    assert not validation.has_errors

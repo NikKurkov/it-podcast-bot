@@ -92,11 +92,11 @@ def test_invalid_response_rejected(tmp_path, monkeypatch, speech, rows):
         "app.llm.scriptwriter.rewrite_script_draft",
         lambda *args, **kwargs: json.dumps({"replacements": rows}),
     )
-    with pytest.raises(ValueError):
-        pronunciation.prepare_dialogue_speech(
-            [DialogueLine("host", "Quasar")], tmp_path / "speech.json"
-        )
-    assert not (tmp_path / "spoken_script.md").exists()
+    result = pronunciation.prepare_dialogue_speech(
+        [DialogueLine("host", "Quasar")], tmp_path / "speech.json"
+    )
+    assert result[0].text == "кью-ю-эй-эс-эй-ар"
+    assert (tmp_path / "spoken_script.md").exists()
 
 
 def test_cached_forms_revalidated(tmp_path, speech):
@@ -162,6 +162,24 @@ def test_model_failure_propagates(tmp_path, monkeypatch, speech):
         )
 
 
+def test_invalid_model_pronunciation_is_retried_before_tts(tmp_path, monkeypatch, speech):
+    prompts = []
+
+    def generate(text, **kwargs):
+        prompts.append(kwargs["system_prompt"])
+        target = json.loads(text)[0]
+        spoken = "джи-пи-ти-6 астра" if len(prompts) == 1 else "джи-пи-ти-шесть астра"
+        return json.dumps({"replacements": [{"id": target["id"], "spoken": spoken}]})
+
+    monkeypatch.setattr("app.llm.scriptwriter.rewrite_script_draft", generate)
+    result = pronunciation.prepare_dialogue_speech(
+        [DialogueLine("host", "GPT-6 Astra вышла.")], tmp_path / "speech.json"
+    )
+    assert result[0].text == "джи-пи-ти-шесть астра вышла."
+    assert len(prompts) == 2
+    assert prompts[0] != prompts[1]
+
+
 @pytest.mark.parametrize("spoken", ["а" * 161, "с МИР"])
 def test_oversized_or_context_echo_rejected(tmp_path, monkeypatch, speech, spoken):
     def generate(text, **kwargs):
@@ -175,12 +193,10 @@ def test_oversized_or_context_echo_rejected(tmp_path, monkeypatch, speech, spoke
         return json.dumps({"replacements": [{"id": batch[0]["id"], "spoken": spoken}]})
 
     monkeypatch.setattr("app.llm.scriptwriter.rewrite_script_draft", generate)
-    with pytest.raises(ValueError):
-        pronunciation.prepare_dialogue_speech(
-            [DialogueLine("host", "с МИР")], tmp_path / "speech.json"
-        )
-    assert not (tmp_path / "speech.json").exists()
-    assert not (tmp_path / "spoken_script.md").exists()
+    result = pronunciation.prepare_dialogue_speech(
+        [DialogueLine("host", "с МИР")], tmp_path / "speech.json"
+    )
+    assert result[0].text == "с мир"
 
 
 def test_identifier_digits_are_preserved_in_complete_targets(tmp_path, speech):
@@ -316,3 +332,25 @@ def test_whole_manual_names_and_identities_remain_authoritative(
     )
     assert result[0].text == expected
     assert speech == []
+
+
+def test_failed_name_keeps_valid_terms_and_uses_local_spelling(tmp_path, monkeypatch, speech):
+    batches = []
+
+    def generate(payload, **kwargs):
+        targets = json.loads(payload)
+        batches.append([target["term"] for target in targets])
+        return json.dumps({"replacements": [
+            {"id": target["id"], "spoken": "квейзар" if target["term"] == "Quasar" else "AX7"}
+            for target in targets
+        ]})
+
+    monkeypatch.setattr("app.llm.scriptwriter.rewrite_script_draft", generate)
+    path = tmp_path / "speech.json"
+    line = DialogueLine("host", "Quasar и AX7 вышли.")
+    result = pronunciation.prepare_dialogue_speech([line], path)
+
+    assert batches == [["Quasar", "AX7"], ["AX7"]]
+    assert result[0].text == "квейзар и эй-экс 7 вышли."
+    assert json.loads(path.read_text())["result"]["fallback_ids"] == ["0:9:12"]
+    assert line.text == "Quasar и AX7 вышли."

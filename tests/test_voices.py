@@ -80,3 +80,13 @@ def test_get_voice_config_xtts_falls_back_to_character_key(monkeypatch) -> None:
 def test_dialogue_provider_never_silently_falls_back(provider):
     with pytest.raises(ValueError, match="Unsupported dialogue TTS provider"):
         get_voice_config("mark", provider_name=provider)
+
+
+def test_silero_voice_can_be_set_without_changing_other_hosts(monkeypatch):
+    from app.audio import voices
+
+    monkeypatch.setenv("SILERO_NIKA_VOICE", "baya")
+    monkeypatch.setattr(voices, "settings", type(voices.settings)(_env_file=None))
+
+    assert get_voice_config("nika", "silero")["speaker"] == "baya"
+    assert get_voice_config("mark", "silero")["speaker"] == "eugene"

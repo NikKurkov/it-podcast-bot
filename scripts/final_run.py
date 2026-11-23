@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import json
 import logging
 import sys
 from pathlib import Path
@@ -19,8 +20,8 @@ from app.db.repositories.episodes import (
 )
 from app.db.repositories.posts import get_posts_for_digest, update_editorial_state
 from app.db.session import SessionLocal, init_db
-from app.pipeline.episode_package import create_episode_package
-from app.pipeline.episode_history import get_recent_episode_post_texts
+from app.pipeline.episode_package import _build_package_slug, create_episode_package
+from app.pipeline.episode_history import get_recent_episode_post_texts, is_published_episode
 from app.pipeline.episode_report import format_episode_report
 from app.pipeline.run_report import (
     format_publication_checks,
@@ -41,6 +42,7 @@ from app.utils.logger import setup_logging
 from app.utils.locking import exclusive_lock
 
 logger = logging.getLogger(__name__)
+_RETRY_PATH = Path("data/logs/podcast_retry.json")
 
 
 def parse_args() -> argparse.Namespace:
@@ -99,10 +101,19 @@ def _run_final(args: argparse.Namespace) -> int | None:
     selection_diagnostics = {}
     publication_checks = []
     publish_result = None
+    resumable = (
+        args.publish and args.slug is None and args.dialogue_script and args.llm_profile is not None
+        and settings.llm_chunked_script_enabled and settings.llm_script_editor_enabled
+    )
+    resume_slug = _recent_failed_package(args.history_limit) if resumable else None
+    draft_slug = resume_slug
+    episodes_dir = Path("data/episodes")
 
     try:
         init_db()
-        if args.no_collect:
+        if resume_slug:
+            logger.info("Resuming incomplete package %s", resume_slug)
+        elif args.no_collect:
             collect_stats = {
                 "channels_total": 0,
                 "channels_ok": 0,
@@ -121,15 +132,20 @@ def _run_final(args: argparse.Namespace) -> int | None:
             )
 
         with SessionLocal() as session:
-            selected_count = _auto_select_posts(
-                session,
-                pool_limit=args.pool_limit,
-                top=args.top,
-                history_limit=args.history_limit,
-                lookback_hours=args.lookback_hours,
-                llm_profile=args.llm_profile,
-                diagnostics=selection_diagnostics,
-            )
+            if resume_slug:
+                snapshot = episodes_dir / resume_slug / "source_posts.json"
+                selected_count = len(json.loads(snapshot.read_text(encoding="utf-8")))
+                selection_diagnostics["resumed"] = True
+            else:
+                selected_count = _auto_select_posts(
+                    session,
+                    pool_limit=args.pool_limit,
+                    top=args.top,
+                    history_limit=args.history_limit,
+                    lookback_hours=args.lookback_hours,
+                    llm_profile=args.llm_profile,
+                    diagnostics=selection_diagnostics,
+                )
             if selected_count == 0:
                 write_run_report(
                     status="blocked",
@@ -145,10 +161,15 @@ def _run_final(args: argparse.Namespace) -> int | None:
                 print("  need at least: 1 meaningful fresh story")
                 return 2
             try:
+                draft_slug = draft_slug or _build_package_slug(args.slug)
+                if resumable:
+                    temporary = _RETRY_PATH.with_suffix(".tmp")
+                    temporary.write_text(json.dumps({"resume_slug": draft_slug}), encoding="utf-8")
+                    temporary.replace(_RETRY_PATH)
                 package = create_episode_package(
                     session,
                     limit=args.top,
-                    slug=args.slug,
+                    slug=draft_slug,
                     llm_profile=args.llm_profile,
                     dialogue_script=args.dialogue_script,
                     with_audio=args.with_audio,
@@ -161,7 +182,10 @@ def _run_final(args: argparse.Namespace) -> int | None:
                     target_minutes=args.target_minutes,
                     research=False if args.no_research else None,
                     ordered_post_ids=selection_diagnostics.get("selected_post_ids"),
+                    resume=resume_slug is not None,
                 )
+                if resumable:
+                    _RETRY_PATH.unlink(missing_ok=True)
             except APIConnectionError as exc:
                 raise SystemExit(
                     "Could not connect to local LLM server. Run `make ollama-cpu` in another terminal "
@@ -174,6 +198,9 @@ def _run_final(args: argparse.Namespace) -> int | None:
                     ) from exc
                 raise
 
+        if package.posts_count is not None and package.posts_count != selected_count:
+            selection_diagnostics["included_count"] = package.posts_count
+            selected_count = package.posts_count
         print("Final run complete:")
         print(
             format_episode_report(
@@ -186,6 +213,14 @@ def _run_final(args: argparse.Namespace) -> int | None:
                 selected_count=selected_count,
                 requested_top=args.top,
             )
+            if resume_slug and _contains_published_stories(
+                package.selected_posts_path, args.history_limit
+            ):
+                publication_checks.append({
+                    "name": "published_history",
+                    "status": "error",
+                    "detail": "A story from the resumed package has already aired.",
+                })
             print(format_publication_checks(publication_checks))
             if not publication_allowed(publication_checks):
                 write_run_report(
@@ -226,6 +261,11 @@ def _run_final(args: argparse.Namespace) -> int | None:
             selection_diagnostics=selection_diagnostics,
         )
     except BaseException as exc:
+        draft_path = episodes_dir / draft_slug if draft_slug else None
+        can_resume = (
+            resumable and package is None and draft_path is not None
+            and (draft_path / "source_posts.json").is_file()
+        )
         write_run_report(
             status="failed",
             output_dir=package.path if package else Path("data/logs"),
@@ -237,8 +277,45 @@ def _run_final(args: argparse.Namespace) -> int | None:
             publication_checks=publication_checks,
             publish_result=publish_result,
             error=str(exc),
+            resume_slug=draft_slug if can_resume else None,
         )
         raise
+
+
+def _recent_failed_package(history_limit: int) -> str | None:
+    try:
+        report = json.loads(_RETRY_PATH.read_text(encoding="utf-8"))
+        if not isinstance(report, dict):
+            return None
+        slug = report.get("resume_slug")
+        if not isinstance(slug, str):
+            return None
+        path = Path("data/episodes") / _build_package_slug(slug)
+        # Use the immutable snapshot timestamp so another failed retry cannot extend the window.
+        snapshot = path / "source_posts.json"
+        created = datetime.fromtimestamp(snapshot.stat().st_mtime, timezone.utc)
+        generation = json.loads((path / "script_generation.json").read_text(encoding="utf-8"))
+        if not isinstance(generation, dict) or generation.get("with_review") is not True:
+            return None
+        if _contains_published_stories(snapshot, history_limit):
+            return None
+    except (OSError, ValueError):
+        return None
+    if datetime.now(timezone.utc) - created > timedelta(hours=6):
+        return None
+    if (path / "telegram_publish.json").exists() or is_published_episode(path):
+        return None
+    return slug
+
+
+def _contains_published_stories(snapshot: Path, history_limit: int) -> bool:
+    items = json.loads(snapshot.read_text(encoding="utf-8"))
+    if not isinstance(items, list) or not all(
+        isinstance(item, dict) and isinstance(item.get("text"), str) for item in items
+    ):
+        raise ValueError("Invalid episode source snapshot.")
+    previous = get_recent_episode_post_texts(limit=history_limit)
+    return any(is_similar_to_any_text(item["text"], previous) for item in items)
 
 
 def _auto_select_posts(

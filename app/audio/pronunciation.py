@@ -12,6 +12,10 @@ _LETTER_NAMES = dict(
 _ACRONYM_RE = re.compile(r"(?<![A-Za-zА-Яа-яЁё])[A-Z]{2,}(?![A-Za-zА-Яа-яЁё])")
 
 
+def spell_latin_letters(text: str) -> str:
+    return "-".join(_LETTER_NAMES[letter] for letter in text.upper())
+
+
 @lru_cache(maxsize=8)
 def load_pronunciation_map(path: str | Path = DEFAULT_PRONUNCIATION_PATH) -> dict[str, str]:
     pronunciation_path = Path(path)
@@ -54,6 +58,6 @@ def apply_pronunciation_map(
             return token
         before = " " if match.start() and result[match.start() - 1].isdigit() else ""
         after = " " if match.end() < len(result) and result[match.end()].isdigit() else ""
-        return before + "-".join(_LETTER_NAMES[letter] for letter in token) + after
+        return before + spell_latin_letters(token) + after
 
     return _ACRONYM_RE.sub(spell, result)

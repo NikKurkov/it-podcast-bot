@@ -1,16 +1,22 @@
 """Prepare reviewable speech text without changing the written episode."""
 
 import json
+import logging
 import re
+from collections import Counter
 from dataclasses import asdict, replace
 from pathlib import Path
 
 from app.audio.dialogue import split_speech_line
 from app.audio.models import DialogueLine
-from app.audio.pronunciation import apply_pronunciation_map, load_pronunciation_map
+from app.audio.pronunciation import (
+    apply_pronunciation_map, load_pronunciation_map, spell_latin_letters,
+)
 from app.config.settings import settings
 from app.llm.artifacts import fingerprint, generation_settings, load_checkpoint, save_checkpoint
 from app.llm.context_budget import full_text_batches
+
+logger = logging.getLogger(__name__)
 
 _TARGET = re.compile(
     r"(?<![\w])(?=[A-Za-z0-9'’\-]*[A-Za-z])"
@@ -184,6 +190,35 @@ def _validate(result: dict, targets: list[dict]) -> dict[str, str]:
     return forms
 
 
+def _valid_replacements(result, targets: list[dict]) -> list[dict]:
+    rows = result.get("replacements") if isinstance(result, dict) else None
+    if not isinstance(rows, list):
+        return []
+    rows = [
+        row for row in rows
+        if isinstance(row, dict) and isinstance(row.get("id"), str)
+    ]
+    counts = Counter(row["id"] for row in rows)
+    by_id = {target["id"]: target for target in targets}
+    accepted = []
+    for row in rows:
+        identity = row["id"]
+        if counts[identity] != 1 or identity not in by_id:
+            continue
+        try:
+            _validate({"replacements": [row]}, [by_id[identity]])
+        except ValueError:
+            continue
+        accepted.append(row)
+    return accepted
+
+
+def _fallback_spelling(term: str) -> str:
+    text = re.sub(r"[a-zA-Z]+", lambda match: f" {spell_latin_letters(match[0])} ", term)
+    text = text.replace("+", " плюс ").replace("#", " шарп ").replace("’", " ").replace("'", " ")
+    return " ".join(text.lower().split())
+
+
 def prepare_dialogue_speech(
     lines: list[DialogueLine],
     checkpoint_path: Path,
@@ -211,10 +246,11 @@ def prepare_dialogue_speech(
         }
     )
     cached = load_checkpoint(checkpoint_path, key)
-    if cached is not None:
+    if cached is not None and not cached.get("fallback_ids"):
         forms = _validate(cached, targets)
     else:
         rows = list(deterministic)
+        fallback_targets = []
         if model_targets:
             from app.llm.scriptwriter import rewrite_script_draft
 
@@ -231,19 +267,52 @@ def prepare_dialogue_speech(
                     overhead=_PROMPT + json.dumps(_SCHEMA, ensure_ascii=False),
                     output_tokens=1200,
                 ):
-                    response = rewrite_script_draft(
-                        render(batch),
-                        model=settings.llm_model,
-                        system_prompt=_PROMPT,
-                        temperature=0,
-                        max_tokens=1200,
-                        response_format=_SCHEMA,
-                    )
-                    result = json.loads(response)
-                    _validate(result, batch)
-                    rows.extend(result["replacements"])
+                    remaining = batch
+                    for attempt in range(2):
+                        prompt = _PROMPT
+                        if attempt:
+                            prompt += (
+                                "\nПредыдущий ответ не прошёл проверку. Повтори все id этого списка "
+                                "ровно по одному разу. В spoken пиши числа русскими словами; "
+                                "латинские буквы и цифры недопустимы."
+                            )
+                        try:
+                            response = rewrite_script_draft(
+                                render(remaining),
+                                model=settings.llm_model,
+                                system_prompt=prompt,
+                                temperature=0,
+                                max_tokens=1200,
+                                response_format=_SCHEMA,
+                            )
+                        except RuntimeError as exc:
+                            if not str(exc).startswith((
+                                "Model output was truncated", "LLM returned an empty script",
+                            )):
+                                raise
+                            continue
+                        try:
+                            replacements = _valid_replacements(json.loads(response), remaining)
+                        except json.JSONDecodeError:
+                            continue
+                        rows.extend(replacements)
+                        received = {row["id"] for row in replacements}
+                        remaining = [target for target in remaining if target["id"] not in received]
+                        if not remaining:
+                            break
+                    fallback_targets.extend(remaining)
         cached = {"targets": targets, "replacements": rows}
-        forms = _validate(cached, targets)
+        fallback_ids = {target["id"] for target in fallback_targets}
+        validated_targets = [target for target in targets if target["id"] not in fallback_ids]
+        forms = _validate(cached, validated_targets)
+        if fallback_targets:
+            logger.warning(
+                "Using local spelling for %s unresolved pronunciation targets", len(fallback_targets)
+            )
+            cached["fallback_ids"] = [target["id"] for target in fallback_targets]
+            forms.update({
+                target["id"]: _fallback_spelling(target["term"]) for target in fallback_targets
+            })
     save_checkpoint(checkpoint_path, key, cached)
     spoken = []
     for index, line in enumerate(prepared):

@@ -116,6 +116,7 @@ def rewrite_chunked_dialogue_script_draft(
     with_review: bool = False,
     checkpoint_dir: Path | None = None,
     source_blocks: list[str] | None = None,
+    included_source_indexes: list[int] | None = None,
 ) -> tuple[str, ScriptValidationResult]:
     temperature = settings.llm_script_temperature if temperature is None else temperature
     model = model or settings.llm_model
@@ -199,7 +200,17 @@ def rewrite_chunked_dialogue_script_draft(
     largest_weight = max(weights)
     weights = [weight / largest_weight for weight in weights]
     rendered_chunks = []
+    accepted_sources = []
+    required_speakers = min(2, len(get_active_character_keys()))
+    editor_identity = {
+        "code": Path(__file__).with_name("scene_editor.py").read_text(encoding="utf-8"),
+        "critic_enabled": settings.llm_scene_critic_enabled,
+        "critic_reasoning_effort": settings.llm_source_review_reasoning_effort,
+        "native_reasoning_budget": settings.llama_cpp_reasoning_budget
+        if settings.local_llm_engine == "llamacpp" else None,
+    } if with_review else {}
     for index, (chunk_blocks, chunk_text) in enumerate(zip(chunks, scene_sources), start=1):
+        first_source_index = (index - 1) * chunk_size
         chunk_words = max(1, round(target_words * weights[index - 1] / sum(weights)))
         plan = plans.get(index) or plans.get(str(index))
         prompt = _build_chunk_user_prompt(
@@ -229,36 +240,73 @@ def rewrite_chunked_dialogue_script_draft(
             chunk_words,
             " (checkpoint)" if cached else "",
         )
+        feedback = []
         rendered_chunk = cached.get("script") if cached else None
-        if not isinstance(rendered_chunk, str):
-            response = rewrite_script_draft(
-                prompt,
-                model=model,
-                system_prompt=system_prompt,
-                temperature=temperature,
-                max_tokens=max(400, chunk_words * 10),
-                response_format=author_format,
-                response_path=author_path.with_suffix(".raw.txt") if author_path else None,
-            )
-            rendered_chunk = _parse_author_dialogue(response)
-            save_checkpoint(author_path, key, {"script": rendered_chunk})
-        rendered_chunk = _clean_chunk_dialogue(rendered_chunk)
+        rendered_chunk = (
+            _remove_copied_dialogue(_clean_chunk_dialogue(rendered_chunk), rendered_chunks)
+            if isinstance(rendered_chunk, str) else ""
+        )
         if not rendered_chunk:
-            raise RuntimeError(f"Scene {index} contains no dialogue; generation stopped.")
-        if with_review:
-            from app.llm.scene_editor import audit_scene, review_scene
+            author_prompt = prompt
+            for author_attempt in range(2):
+                try:
+                    response = rewrite_script_draft(
+                        author_prompt,
+                        model=model,
+                        system_prompt=system_prompt,
+                        temperature=temperature,
+                        max_tokens=max(400, chunk_words * (10 if not author_attempt else 20)),
+                        response_format=author_format,
+                        response_path=(
+                            author_path.with_suffix(".raw.txt" if not author_attempt else ".retry.raw.txt")
+                            if author_path else None
+                        ),
+                    )
+                except RuntimeError as exc:
+                    if not str(exc).startswith((
+                        "Model output was truncated", "LLM returned an empty script",
+                    )):
+                        raise
+                    author_error = exc
+                except ValueError as exc:
+                    if not str(exc).startswith("Complete material exceeds model context."):
+                        raise
+                    author_error = exc
+                else:
+                    try:
+                        draft = _clean_chunk_dialogue(_parse_author_dialogue(response))
+                        rendered_chunk = _remove_copied_dialogue(draft, rendered_chunks)
+                        if not rendered_chunk:
+                            retry = json.loads(prompt)
+                            retry["task"] += (
+                                " Предыдущий ответ не содержал новых реплик. Начни сразу "
+                                "с факта о текущей теме и отвечай только по её источнику."
+                            )
+                            author_prompt = json.dumps(retry, ensure_ascii=False)
+                            raise ValueError("Scene contains no new dialogue.")
+                    except ValueError as exc:
+                        author_error = exc
+                    else:
+                        save_checkpoint(author_path, key, {"script": draft})
+                        break
+                logger.warning(
+                    "Rejected draft for scene %s, attempt %s: %s",
+                    index, author_attempt + 1, author_error,
+                )
+            else:
+                if not with_review or included_source_indexes is None:
+                    raise author_error
+                feedback = [{"claim": "", "reason": str(author_error)}]
+        if with_review and included_source_indexes is not None and not feedback:
+            if len(validate_dialogue_script(rendered_chunk).speakers) < required_speakers:
+                feedback = [{"claim": "", "reason": "Сцену читает один ведущий, нужен диалог."}]
+        if with_review and not feedback:
+            from app.llm.scene_editor import (
+                SceneAuditRejected, SceneReviewRejected, audit_scene, review_scene,
+            )
 
             unresolved = []
-            # Include the adjacent original source when a transition refers back.
-            source_context = "\n\n".join(scene_sources[max(0, index - 2) : index])
-            editor_identity = {
-                "code": Path(__file__).with_name("scene_editor.py").read_text(encoding="utf-8"),
-                "critic_enabled": settings.llm_scene_critic_enabled,
-                "critic_reasoning_effort": settings.llm_source_review_reasoning_effort,
-                "native_reasoning_budget": settings.llama_cpp_reasoning_budget
-                if settings.local_llm_engine == "llamacpp"
-                else None,
-            }
+            context_sources = [*accepted_sources[-2:], chunk_text]
             for attempt in range(1, settings.llm_factcheck_attempts + 2):
                 suffix = "" if attempt == 1 else f"_{attempt}"
                 audit_path = (
@@ -266,30 +314,70 @@ def rewrite_chunked_dialogue_script_draft(
                     if checkpoint_dir
                     else None
                 )
-                audit_key = fingerprint(
-                    {
-                        "source": source_context,
-                        "script": rendered_chunk,
-                        "generation": generation,
-                        "editor": editor_identity,
-                    }
-                )
-                audit = load_checkpoint(audit_path, audit_key)
-                if audit is None:
-                    audit = audit_scene(
-                        rendered_chunk,
-                        source_context,
-                        model=model,
-                        response_path=audit_path.with_suffix(".raw.json") if audit_path else None,
+                audit = None
+                for candidate_source in (
+                    "\n\n".join(context_sources[start:])
+                    for start in range(len(context_sources))
+                ):
+                    audit_key = fingerprint(
+                        {
+                            "source": candidate_source,
+                            "script": rendered_chunk,
+                            "generation": generation,
+                            "editor": editor_identity,
+                        }
                     )
-                    save_checkpoint(audit_path, audit_key, audit)
+                    audit = load_checkpoint(audit_path, audit_key)
+                    if audit is None:
+                        try:
+                            audit = audit_scene(
+                                rendered_chunk,
+                                candidate_source,
+                                model=model,
+                                response_path=(
+                                    audit_path.with_suffix(".raw.json") if audit_path else None
+                                ),
+                            )
+                        except SceneAuditRejected as exc:
+                            if included_source_indexes is None:
+                                raise
+                            feedback = [{"claim": "", "reason": str(exc)}]
+                            break
+                        except ValueError as exc:
+                            if not str(exc).startswith(
+                                "A complete source exceeds model context."
+                            ):
+                                raise
+                            if candidate_source == chunk_text:
+                                if included_source_indexes is None:
+                                    raise
+                                feedback = [{"claim": "", "reason": str(exc)}]
+                                break
+                            logger.warning(
+                                "Scene %s audit context exceeds model window; dropping oldest source",
+                                index,
+                            )
+                            continue
+                        save_checkpoint(audit_path, audit_key, audit)
+                    source_context = candidate_source
+                    break
+                if audit is None:
+                    break
                 feedback = [*audit["unsupported_claims"], *unresolved]
                 if not feedback:
+                    if included_source_indexes is not None:
+                        quotes = {
+                            quote for claim in audit["supported_claims"]
+                            for quote in claim.get("quotes", [])
+                        }
+                        if any(not any(quote in block for quote in quotes) for block in chunk_blocks):
+                            feedback = [{
+                                "claim": "",
+                                "reason": "В сцене не подтверждены факты из всех текущих источников.",
+                            }]
                     break
                 if attempt > settings.llm_factcheck_attempts:
-                    raise RuntimeError(
-                        f"Scene {index} has unresolved editorial issues; see scene review checkpoint."
-                    )
+                    break
                 logger.warning(
                     "Scene %s needs source corrections, attempt %s/%s",
                     index,
@@ -311,26 +399,150 @@ def rewrite_chunked_dialogue_script_draft(
                 )
                 review = load_checkpoint(review_path, review_key)
                 if review is None:
-                    review = review_scene(
-                        rendered_chunk,
-                        source_context,
-                        model=model,
-                        target_words=chunk_words,
-                        feedback=feedback,
-                        response_path=review_path.with_suffix(".raw.json") if review_path else None,
-                    )
+                    try:
+                        review = review_scene(
+                            rendered_chunk,
+                            source_context,
+                            model=model,
+                            target_words=chunk_words,
+                            feedback=feedback,
+                            response_path=review_path.with_suffix(".raw.json") if review_path else None,
+                        )
+                    except SceneReviewRejected:
+                        if included_source_indexes is None:
+                            raise
+                        logger.warning("Scene %s editor could not apply corrections", index)
+                        break
                     save_checkpoint(review_path, review_key, review)
-                rendered_chunk = _clean_chunk_dialogue(review["script"])
+                rendered_chunk = _remove_copied_dialogue(
+                    _clean_chunk_dialogue(review["script"]), rendered_chunks,
+                )
+                if not rendered_chunk:
+                    feedback = [{"claim": "", "reason": "Редактор повторил предыдущий разговор."}]
+                    break
                 unresolved = [
                     {"claim": "", "reason": issue} for issue in review.get("unresolved_issues", [])
                 ]
+        if with_review and included_source_indexes is not None and not feedback:
+            if len(validate_dialogue_script(rendered_chunk).speakers) < required_speakers:
+                feedback = [{"claim": "", "reason": "После правки осталась реплика одного ведущего."}]
+        if feedback:
+            if included_source_indexes is None:
+                raise RuntimeError(
+                    f"Scene {index} has unresolved editorial issues; see scene review checkpoint."
+                )
+            recovery_prompt = json.loads(prompt)
+            task = (
+                "Напиши короткую самостоятельную версию сюжета на 2–4 реплики нескольких "
+                "ведущих. Возьми один важный факт из источника и сохрани его оговорки. "
+                "Убери недоказанные объяснения, догадки и пересказ других тем. "
+            )
+            recovery_prompt["required_corrections"] = feedback
+            for offset, block in enumerate(chunk_blocks):
+                source_index = first_source_index + offset
+                recovery_path = (
+                    checkpoint_dir / f"{index:03d}_recovery_{offset + 1}.json"
+                    if checkpoint_dir else None
+                )
+                recovery_source = _compact_news_block(block)
+                recovery_prompt["source_material"] = recovery_source
+                recovery_prompt["previous_scene_for_continuity_only"] = ""
+                recovery_prompt["editorial_angle"] = None
+                recovery_prompt["task"] = task + (
+                    "Это начало выпуска." if not rendered_chunks else "Начни сразу с этой темы."
+                )
+                if source_index == len(blocks) - 1:
+                    recovery_prompt["task"] += " Естественно заверши выпуск."
+                short_scene = _recover_scene(
+                    recovery_prompt,
+                    recovery_source,
+                    model=model,
+                    system_prompt=system_prompt,
+                    author_format=author_format,
+                    identity={"generation": generation, "editor": editor_identity},
+                    path=recovery_path,
+                    previous_scenes=rendered_chunks,
+                )
+                if short_scene is None:
+                    logger.warning(
+                        "Skipping story %s after its short version failed verification",
+                        source_index + 1,
+                    )
+                    continue
+                logger.info("Using the verified short version of story %s", source_index + 1)
+                rendered_chunks.append(short_scene)
+                accepted_sources.append(recovery_source)
+                included_source_indexes.append(source_index)
+            continue
         rendered_chunks.append(rendered_chunk)
+        accepted_sources.append(chunk_text)
+        if included_source_indexes is not None:
+            included_source_indexes.extend(
+                range(first_source_index, first_source_index + len(chunk_blocks))
+            )
 
+    if not rendered_chunks:
+        raise RuntimeError("No source-verified scenes remain; see scene review checkpoints.")
     script_text = repair_dialogue_script_text("\n".join(rendered_chunks))
     validation = validate_dialogue_script(
         script_text, require_all_characters=False, allowed_speakers=set(get_active_character_keys())
     )
     return script_text, validation
+
+
+def _recover_scene(
+    prompt: dict,
+    source: str,
+    *,
+    model: str,
+    system_prompt: str,
+    author_format: dict,
+    identity: dict,
+    path: Path | None,
+    previous_scenes: list[str],
+) -> str | None:
+    from app.llm.scene_editor import audit_scene
+
+    key = fingerprint({
+        "prompt": prompt, "system": system_prompt, "protocol": author_format, **identity,
+        "previous_scenes": previous_scenes,
+    })
+    cached = load_checkpoint(path, key)
+    if cached is not None:
+        return cached["script"]
+    try:
+        response = rewrite_script_draft(
+            json.dumps(prompt, ensure_ascii=False),
+            model=model,
+            system_prompt=system_prompt,
+            temperature=0.1,
+            max_tokens=650,
+            response_format=author_format,
+            response_path=path.with_suffix(".raw.txt") if path else None,
+        )
+        script = _remove_copied_dialogue(
+            _clean_chunk_dialogue(_parse_author_dialogue(response)), previous_scenes,
+        )
+        speakers = set(get_active_character_keys())
+        validation = validate_dialogue_script(script, allowed_speakers=speakers)
+        if validation.has_errors or len(validation.speakers) < min(2, len(speakers)):
+            return None
+        audit = audit_scene(
+            script, source, model=model,
+            response_path=path.with_suffix(".audit.raw.json") if path else None,
+        )
+    except ValueError as exc:
+        logger.warning("Short scene rejected: %s", exc)
+        return None
+    except RuntimeError as exc:
+        if not str(exc).startswith(("Model output was truncated", "LLM returned an empty script")):
+            raise
+        logger.warning("Short scene rejected: %s", exc)
+        return None
+    if audit["unsupported_claims"] or not audit["supported_claims"]:
+        return None
+    save_checkpoint(path, key, {"script": script})
+    return script
 
 
 def edit_dialogue_script(
@@ -552,7 +764,7 @@ def _build_chunk_user_prompt(
         "Если содержательного материала меньше, не растягивай его. "
         + (
             "Это начало выпуска. "
-            if chunk_index == 1
+            if not previous_scene
             else "Продолжи беседу, не начинай выпуск заново. "
         )
         + (
@@ -565,7 +777,7 @@ def _build_chunk_user_prompt(
         {
             "scene": {"index": chunk_index, "total": chunks_total},
             "source_material": chunk_text,
-            "previous_scene_for_continuity_only": previous_scene,
+            "previous_scene_for_continuity_only": _continuity_excerpt(previous_scene),
             "editorial_angle": scene_plan,
             "task": task,
         },
@@ -575,6 +787,52 @@ def _build_chunk_user_prompt(
 
 def _clean_chunk_dialogue(script_text: str) -> str:
     return repair_dialogue_script_text(script_text)
+
+
+def _continuity_excerpt(scene: str) -> str:
+    lines = [line for line in scene.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    for line in reversed(lines):
+        speaker, _, text = line.replace("：", ":", 1).partition(":")
+        words = text.split()
+        if len(words) >= 6:
+            if len(words) > 32:
+                return f"{speaker.strip()}: …{' '.join(words[-32:])}"
+            return line.strip()
+    return lines[-1].strip()
+
+
+def _remove_copied_dialogue(scene: str, previous_scenes: list[str]) -> str:
+    """Remove verbatim exchanges from earlier scenes, preserving standalone reactions."""
+    if not previous_scenes:
+        return scene
+
+    def turn_keys(lines):
+        return [" ".join(line.replace("：", ":", 1).casefold().split()) for line in lines]
+
+    previous_pairs = set()
+    for previous in previous_scenes:
+        turns = turn_keys(line for line in previous.splitlines() if line.strip())
+        previous_pairs.update(zip(turns, turns[1:]))
+
+    lines = [line for line in scene.splitlines() if line.strip()]
+    keys = turn_keys(lines)
+    copied = set()
+    start = None
+    for index, turn in enumerate(keys):
+        if index + 1 < len(keys) and (turn, keys[index + 1]) in previous_pairs:
+            if start is None:
+                start = index
+        elif start is not None:
+            # A short exchange may recur naturally, even when the wording matches.
+            if sum(len(key.partition(":")[2].split()) for key in keys[start:index + 1]) >= 12:
+                copied.update(range(start, index + 1))
+            start = None
+    if not copied:
+        return scene
+    logger.info("Removed %s turns copied from earlier scenes", len(copied))
+    return "\n".join(line for index, line in enumerate(lines) if index not in copied)
 
 
 def _parse_author_dialogue(response: str) -> str:

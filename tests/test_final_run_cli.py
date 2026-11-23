@@ -339,3 +339,58 @@ def test_same_id_edit_is_eligible_without_mutating_published_snapshot(tmp_path, 
         selected, _ = final_run._build_selection(session, **kwargs)
         assert [item.post.id for item in selected] == [before.id]
         assert (path / "selected_posts.json").read_text() == snapshot
+
+
+def test_scheduled_retry_reuses_prepublication_snapshot(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+
+    import pytest
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys, "argv",
+        ["final_run.py", "--no-collect", "--publish", "--dialogue-script", "--llm-profile", "final"],
+    )
+    monkeypatch.setattr(final_run, "init_db", lambda: None)
+    monkeypatch.setattr(final_run, "SessionLocal", lambda: nullcontext(object()))
+    selections = []
+    packages = []
+
+    def select(*args, **kwargs):
+        selections.append(True)
+        return 2
+
+    def interrupted(*args, **kwargs):
+        import json
+
+        slug = kwargs.get("slug") or "first-episode"
+        assert json.loads(final_run._RETRY_PATH.read_text())["resume_slug"] == slug
+        packages.append((slug, kwargs.get("resume")))
+        package = tmp_path / "data/episodes" / slug
+        package.mkdir(parents=True, exist_ok=True)
+        (package / "source_posts.json").write_text(
+            '[{"post_id": 12, "text": "First story"}, {"post_id": 17, "text": "Second story"}]'
+        )
+        (package / "script_generation.json").write_text('{"with_review": true}')
+        raise RuntimeError("temporary generation failure")
+
+    monkeypatch.setattr(final_run, "_auto_select_posts", select)
+    monkeypatch.setattr(final_run, "create_episode_package", interrupted)
+    for _ in range(2):
+        with pytest.raises(RuntimeError, match="temporary generation failure"):
+            final_run.main()
+        final_run.write_run_report(status="complete", output_dir=tmp_path / "preview")
+
+    assert len(selections) == 1
+    assert [package[0] for package in packages] == [packages[0][0]] * 2
+    assert packages[1][1] is True
+
+    published = tmp_path / "data/episodes/already-aired"
+    published.mkdir()
+    (published / "selected_posts.json").write_text('[{"text": "First story"}]')
+    (published / "telegram_publish.json").write_text('{"message_id": 10}')
+    with pytest.raises(RuntimeError, match="temporary generation failure"):
+        final_run.main()
+    assert len(selections) == 2
+    assert packages[2][0] != packages[0][0]
+    assert packages[2][1] is False

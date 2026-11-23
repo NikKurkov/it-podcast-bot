@@ -138,3 +138,101 @@ def test_narrative_espeak_audio_does_not_require_dialogue_cast(tmp_path, monkeyp
             tts_provider="espeak",
         )
     assert package.audio_mp3_path.read_bytes() == b"voice"
+
+
+def test_editor_failure_omits_story_from_the_package_and_history(tmp_path, monkeypatch):
+    import json
+
+    from app.llm import scene_editor, scriptwriter
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(scriptwriter.settings, "llm_script_editor_enabled", True)
+    monkeypatch.setattr(scriptwriter.settings, "llm_factcheck_attempts", 1)
+
+    def author(payload, **kwargs):
+        source = json.loads(payload)["source_material"]
+        fact = "Непроверенная подробность." if "Спорный сюжет" in source else "Проверенная тема."
+        return json.dumps({"turns": [
+            {"speaker": "mark", "text": fact},
+            {"speaker": "nika", "text": "Что из этого следует?"},
+        ]})
+
+    def audit(script, source, **kwargs):
+        if "Непроверенная подробность" in script:
+            return {"supported_claims": [], "unsupported_claims": [
+                {"claim": "Непроверенная подробность.", "reason": "Нет подтверждения"},
+            ]}
+        return {
+            "supported_claims": [{"claim": "Проверенная тема.", "quotes": ["Проверенный сюжет"]}],
+            "unsupported_claims": [],
+        }
+
+    monkeypatch.setattr(scriptwriter, "rewrite_script_draft", author)
+    monkeypatch.setattr(scene_editor, "audit_scene", audit)
+    monkeypatch.setattr(
+        scene_editor, "review_scene",
+        lambda script, *args, **kwargs: {"script": script, "unresolved_issues": []},
+    )
+
+    with _make_session_factory()() as session:
+        source = get_or_create_source(session, "news")
+        ids = []
+        for index, text in enumerate(("Спорный сюжет", "Проверенный сюжет"), start=1):
+            post = save_post(session, source, {
+                "telegram_message_id": index,
+                "message_date": datetime(2026, 11, 21, tzinfo=timezone.utc),
+                "text": text,
+                "url": f"https://t.me/news/{index}",
+            })
+            ids.append(post.id)
+        update_editorial_state(session, ids, selected=True, category="top news")
+        package = create_episode_package(
+            session, slug="shorter", llm_profile="final", dialogue_script=True,
+            ordered_post_ids=ids, research=False,
+        )
+        episode = get_episode_by_slug(session, "shorter")
+        assert [link.telegram_post_id for link in episode.posts] == ids[1:]
+
+    assert "Проверенная тема." in package.llm_script_path.read_text()
+    assert "Непроверенная подробность." not in package.llm_script_path.read_text()
+    assert "Спорный сюжет" in (package.path / "source_blocks.json").read_text()
+    assert "Спорный сюжет" not in package.digest_markdown_path.read_text()
+    assert json.loads(package.metadata_path.read_text())["post_ids"] == ids[1:]
+    assert json.loads((package.path / "script_quality_report.json").read_text())[
+        "skipped_post_ids"
+    ] == ids[:1]
+
+
+def test_resume_uses_original_snapshot_after_collection_changes(tmp_path, monkeypatch):
+    import pytest
+
+    from app.pipeline import episode_package
+
+    monkeypatch.chdir(tmp_path)
+    with _make_session_factory()() as session:
+        source = get_or_create_source(session, "news")
+        post = save_post(session, source, {
+            "telegram_message_id": 1,
+            "message_date": datetime(2026, 11, 21, tzinfo=timezone.utc),
+            "text": "Исходное содержание.",
+        })
+        update_editorial_state(session, [post.id], selected=True, category="top news")
+
+        def stop(*args, **kwargs):
+            raise RuntimeError("interrupted")
+
+        monkeypatch.setattr(episode_package, "rewrite_script_draft", stop)
+        with pytest.raises(RuntimeError, match="interrupted"):
+            create_episode_package(session, slug="retry", llm_profile="final", research=False)
+        post.text = "Изменённое содержание."
+        session.commit()
+        update_editorial_state(session, [post.id], selected=False)
+
+        monkeypatch.setattr(episode_package, "rewrite_script_draft", lambda text, **_: text)
+        resumed = create_episode_package(session, slug="retry", llm_profile="final", resume=True)
+        assert resumed.posts_count == 1
+        assert "Исходное содержание." in resumed.llm_script_path.read_text()
+        assert "Изменённое содержание." not in resumed.selected_posts_path.read_text()
+        (resumed.path / "telegram_publish.json").touch()
+        with pytest.raises(ValueError, match="published"):
+            create_episode_package(session, slug="retry", llm_profile="final", resume=True)
