@@ -271,7 +271,9 @@ def create_episode_package(
             provider_name = (tts_provider or settings.tts_provider).strip().lower()
             if provider_name in {"silero", "xtts"}:
                 dialogue_lines = prepare_dialogue_speech(
-                    script_to_dialogue_lines(audio_source_path.read_text(encoding="utf-8")),
+                    script_to_dialogue_lines(
+                        audio_source_path.read_text(encoding="utf-8"), split_for_tts=False
+                    ),
                     package_path / "speech_pronunciation.json",
                 )
             if settings.llm_release_before_tts and (llm_profile or settings.tts_auto_pronunciation):
