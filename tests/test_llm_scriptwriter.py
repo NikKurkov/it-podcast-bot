@@ -628,3 +628,30 @@ def test_chunk_author_retries_when_the_entire_scene_was_copied(monkeypatch):
     assert script.count(previous[0]["text"]) == 1
     assert new[0]["text"] in script
     assert not validation.has_errors
+
+
+def test_chunk_removes_long_exact_repetition_before_source_audit(monkeypatch):
+    detail = "Новая версия поддерживает выгрузку журнала событий и позволяет искать записи по дате."
+    turns = [
+        {"speaker": "mark", "text": "Именно."},
+        {"speaker": "nika", "text": detail},
+        {"speaker": "gleb", "text": "Именно."},
+        {"speaker": "nika", "text": detail},
+    ]
+    audited = []
+    monkeypatch.setattr(
+        scriptwriter, "rewrite_script_draft", lambda *a, **kw: json.dumps({"turns": turns})
+    )
+
+    def audit(script, source, **kwargs):
+        audited.append(script)
+        return {"unsupported_claims": [], "supported_claims": []}
+
+    monkeypatch.setattr("app.llm.scene_editor.audit_scene", audit)
+    script, validation = scriptwriter.rewrite_chunked_dialogue_script_draft(
+        "", source_blocks=["Новое средство поиска по дате."], chunk_size=1, with_review=True,
+    )
+    assert audited == [script]
+    assert script.count(detail) == 1
+    assert script.count("Именно.") == 2
+    assert not validation.has_errors

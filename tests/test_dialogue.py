@@ -126,3 +126,11 @@ def test_internal_tts_split_does_not_add_a_turn_pause_mid_sentence():
         if not line.text.endswith((".", "?", "!", "…"))
     )
     assert " ".join(line.text for line in lines) == text
+
+
+def test_long_sentence_prefers_clause_boundary_to_splitting_prepositional_phrase():
+    from app.audio.dialogue import _split_long_text
+
+    first = "Агент может привести горизонтальное видео к вертикальному формату,"
+    second = "а затем подготовить отдельные субтитры для социальных сетей."
+    assert _split_long_text(f"{first} {second}", max_chars=86) == [first, second]

@@ -4,6 +4,7 @@ PySocks
 openai
 httpx
 numpy
+num2words==0.5.14
 soundfile
 omegaconf
 transformers==4.33.3

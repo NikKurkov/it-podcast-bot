@@ -48,7 +48,7 @@ def main() -> None:
 
     text = input_path.read_text(encoding="utf-8")
     if args.provider in {"silero", "xtts"}:
-        dialogue_lines = script_to_dialogue_lines(text)
+        dialogue_lines = script_to_dialogue_lines(text, split_for_tts=False)
         if not dialogue_lines:
             raise SystemExit("No speakable dialogue lines found.")
 

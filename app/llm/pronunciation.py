@@ -12,6 +12,7 @@ from app.audio.models import DialogueLine
 from app.audio.pronunciation import (
     apply_pronunciation_map, load_pronunciation_map, spell_latin_letters,
 )
+from app.audio.spoken_numbers import normalize_spoken_numbers, normalize_spoken_versions
 from app.config.settings import settings
 from app.llm.artifacts import fingerprint, generation_settings, load_checkpoint, save_checkpoint
 from app.llm.context_budget import full_text_batches
@@ -226,7 +227,10 @@ def prepare_dialogue_speech(
     """Apply manual spellings, optionally resolve occurrences, and split for speech."""
     entries = load_pronunciation_map()
     automatic = settings.tts_auto_pronunciation
-    prepared = [replace(line, text=_prepare_text(line.text, entries, automatic)) for line in lines]
+    prepared = [
+        replace(line, text=normalize_spoken_versions(_prepare_text(line.text, entries, automatic)))
+        for line in lines
+    ]
     targets = _targets(prepared, entries) if automatic else []
     deterministic = [
         {"id": target["id"], "spoken": form}
@@ -319,7 +323,7 @@ def prepare_dialogue_speech(
         text = line.text
         for target in reversed([target for target in targets if target["line"] == index]):
             text = text[: target["start"]] + forms[target["id"]] + text[target["end"] :]
-        spoken.extend(split_speech_line(replace(line, text=text)))
+        spoken.extend(split_speech_line(replace(line, text=normalize_spoken_numbers(text))))
     output = checkpoint_path.parent / "spoken_script.md"
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(".md.tmp")

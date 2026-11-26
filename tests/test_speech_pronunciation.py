@@ -351,6 +351,37 @@ def test_failed_name_keeps_valid_terms_and_uses_local_spelling(tmp_path, monkeyp
     result = pronunciation.prepare_dialogue_speech([line], path)
 
     assert batches == [["Quasar", "AX7"], ["AX7"]]
-    assert result[0].text == "квейзар и эй-экс 7 вышли."
+    assert result[0].text == "квейзар и эй-экс семь вышли."
     assert json.loads(path.read_text())["result"]["fallback_ids"] == ["0:9:12"]
     assert line.text == "Quasar и AX7 вышли."
+
+
+def test_spoken_script_preserves_numbers_before_silero(tmp_path, monkeypatch):
+    from app.audio.dialogue import script_to_dialogue_lines
+    from app.llm.pronunciation import prepare_dialogue_speech
+
+    monkeypatch.setattr(pronunciation.settings, "tts_auto_pronunciation", False)
+    script = (
+        "nika: Штраф — 132 тысячи рублей. Правила действуют с 1 января 2027 года.\n"
+        "gleb: Акции выросли на 80%, а цена — 43,9 миллиарда долларов.\n"
+        "mark: Обсуждаем Zscaler и CrowdStrike. Zscaler обновляет защиту."
+    )
+    checkpoint = tmp_path / "speech_pronunciation.json"
+    lines = prepare_dialogue_speech(
+        script_to_dialogue_lines(script, split_for_tts=False), checkpoint
+    )
+    text = " ".join(line.text for line in lines)
+    assert "сто тридцать две тысячи" in text
+    assert "с первого января две тысячи двадцать седьмого года" in text
+    assert "на восемьдесят процентов" in text
+    assert "сорок три целых девять десятых миллиарда" in text
+    assert text.count("зискейлер") == 2
+    assert "краудстрайк" in text
+    assert not any(char.isdecimal() for char in text)
+
+
+def test_automatic_pronunciation_keeps_complete_numeric_version(tmp_path, monkeypatch, speech):
+    lines = [DialogueLine("mark", "Обновились до v3.11.")]
+    output = pronunciation.prepare_dialogue_speech(lines, tmp_path / "speech.json")
+    assert output[0].text == "Обновились до ви три точка одиннадцать."
+    assert speech == []

@@ -3,6 +3,7 @@ import unicodedata
 from dataclasses import replace
 
 from app.audio.models import DialogueLine
+from app.audio.spoken_numbers import normalize_spoken_dates
 from app.audio.voice_direction import apply_voice_direction
 from app.audio.voices import get_supported_characters, get_voice_config
 from app.podcast.characters import get_character_keys, resolve_character_key
@@ -12,57 +13,12 @@ _ROUND_ROBIN_SPEAKERS = get_character_keys()
 _MAX_LINE_CHARS = 450
 _MAX_TTS_LINE_CHARS = 170
 _MIN_TTS_CHUNK_CHARS = 45
-_RU_MONTHS_FOR_TTS = {
-    "января",
-    "февраля",
-    "марта",
-    "апреля",
-    "мая",
-    "июня",
-    "июля",
-    "августа",
-    "сентября",
-    "октября",
-    "ноября",
-    "декабря",
-}
-_RU_ORDINAL_DAYS_FOR_TTS = {
-    1: "первое",
-    2: "второе",
-    3: "третье",
-    4: "четвёртое",
-    5: "пятое",
-    6: "шестое",
-    7: "седьмое",
-    8: "восьмое",
-    9: "девятое",
-    10: "десятое",
-    11: "одиннадцатое",
-    12: "двенадцатое",
-    13: "тринадцатое",
-    14: "четырнадцатое",
-    15: "пятнадцатое",
-    16: "шестнадцатое",
-    17: "семнадцатое",
-    18: "восемнадцатое",
-    19: "девятнадцатое",
-    20: "двадцатое",
-    21: "двадцать первое",
-    22: "двадцать второе",
-    23: "двадцать третье",
-    24: "двадцать четвёртое",
-    25: "двадцать пятое",
-    26: "двадцать шестое",
-    27: "двадцать седьмое",
-    28: "двадцать восьмое",
-    29: "двадцать девятое",
-    30: "тридцатое",
-    31: "тридцать первое",
-}
 
 
-def script_to_dialogue_lines(script_text: str) -> list[DialogueLine]:
-    explicit_lines = _parse_explicit_dialogue(script_text)
+def script_to_dialogue_lines(
+    script_text: str, *, split_for_tts: bool = True
+) -> list[DialogueLine]:
+    explicit_lines = _parse_explicit_dialogue(script_text, split_for_tts=split_for_tts)
     if explicit_lines:
         return explicit_lines
 
@@ -84,7 +40,7 @@ def script_to_dialogue_lines(script_text: str) -> list[DialogueLine]:
     return lines
 
 
-def _parse_explicit_dialogue(script_text: str) -> list[DialogueLine]:
+def _parse_explicit_dialogue(script_text: str, *, split_for_tts: bool) -> list[DialogueLine]:
     supported = set(get_supported_characters())
     lines: list[DialogueLine] = []
     current_speaker: str | None = None
@@ -93,14 +49,14 @@ def _parse_explicit_dialogue(script_text: str) -> list[DialogueLine]:
     for raw_line in script_text.splitlines():
         line = raw_line.strip()
         if not line:
-            _flush_dialogue_line(lines, current_speaker, current_text)
+            _flush_dialogue_line(lines, current_speaker, current_text, split_for_tts=split_for_tts)
             current_speaker = None
             current_text = []
             continue
 
         match = _SPEAKER_RE.match(line)
         if match and _is_supported_speaker(match.group("speaker"), supported):
-            _flush_dialogue_line(lines, current_speaker, current_text)
+            _flush_dialogue_line(lines, current_speaker, current_text, split_for_tts=split_for_tts)
             current_speaker = resolve_character_key(match.group("speaker"))
             current_text = [match.group("text").strip()]
             continue
@@ -108,7 +64,7 @@ def _parse_explicit_dialogue(script_text: str) -> list[DialogueLine]:
         if current_speaker:
             current_text.append(line)
 
-    _flush_dialogue_line(lines, current_speaker, current_text)
+    _flush_dialogue_line(lines, current_speaker, current_text, split_for_tts=split_for_tts)
     return lines
 
 
@@ -116,11 +72,13 @@ def _flush_dialogue_line(
     lines: list[DialogueLine],
     speaker: str | None,
     text_parts: list[str],
+    *,
+    split_for_tts: bool,
 ) -> None:
     if not speaker:
         return
 
-    text = _clean_speech_text(" ".join(text_parts))
+    text = _clean_speech_text(" ".join(text_parts), normalize_dates=split_for_tts)
     if not text:
         return
 
@@ -128,7 +86,7 @@ def _flush_dialogue_line(
     line = apply_voice_direction(
         speaker=speaker, text=text, base_pause_after_ms=voice_config.get("pause_after_ms", 500)
     )
-    lines.extend(split_speech_line(line))
+    lines.extend(split_speech_line(line) if split_for_tts else [line])
 
 
 def split_speech_line(line: DialogueLine) -> list[DialogueLine]:
@@ -180,33 +138,16 @@ def _flush_paragraph(paragraphs: list[str], text_parts: list[str]) -> None:
         paragraphs.append(text)
 
 
-def _clean_speech_text(text: str) -> str:
+def _clean_speech_text(text: str, *, normalize_dates: bool = True) -> str:
     text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
     text = re.sub(r"\[(.*?)\]\((.*?)\)", r"\1", text)
     text = re.sub(r"https?://\S+", "", text)
     text = re.sub(r"(?<![\w+#])[@#]\w+", "", text)
     text = "".join(char for char in text if unicodedata.category(char) not in {"Cc", "Cf", "So"})
-    text = _normalize_russian_dates_for_tts(text)
+    if normalize_dates:
+        text = normalize_spoken_dates(text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
-
-
-def _normalize_russian_dates_for_tts(text: str) -> str:
-    month_pattern = "|".join(sorted(_RU_MONTHS_FOR_TTS, key=len, reverse=True))
-
-    def replace_date(match: re.Match) -> str:
-        day = int(match.group("day"))
-        month = match.group("month")
-        if day not in _RU_ORDINAL_DAYS_FOR_TTS:
-            return match.group(0)
-        return f"{_RU_ORDINAL_DAYS_FOR_TTS[day]} {month}"
-
-    return re.sub(
-        rf"\b(?P<day>0?[1-9]|[12]\d|3[01])\s+(?P<month>{month_pattern})\b",
-        replace_date,
-        text,
-        flags=re.IGNORECASE,
-    )
 
 
 def _is_service_line(line: str) -> bool:
@@ -249,15 +190,23 @@ def _split_long_text(text: str, max_chars: int) -> list[str]:
 
 def _split_by_words(text: str, max_chars: int) -> list[str]:
     chunks = []
-    current = ""
-    for word in text.split():
-        if current and len(current) + 1 + len(word) > max_chars:
-            chunks.append(current)
-            current = word
-        else:
-            current = f"{current} {word}".strip()
-    if current:
-        chunks.append(current)
+    remaining = text.split()
+    while remaining:
+        size = 0
+        end = 0
+        clause_end = 0
+        for index, word in enumerate(remaining, start=1):
+            size += len(word) + (1 if end else 0)
+            if end and size > max_chars:
+                break
+            end = index
+            if size >= _MIN_TTS_CHUNK_CHARS and word.endswith((",", ";", ":", "—")):
+                clause_end = index
+        if end < len(remaining) and clause_end:
+            if len(" ".join(remaining[clause_end:])) >= _MIN_TTS_CHUNK_CHARS:
+                end = clause_end
+        chunks.append(" ".join(remaining[:end]))
+        remaining = remaining[end:]
     return _merge_short_tail_chunks(chunks, max_chars=max_chars)
 
 
@@ -266,7 +215,7 @@ def _merge_short_tail_chunks(chunks: list[str], max_chars: int) -> list[str]:
         return chunks
     tail = chunks[-1].strip()
     previous = chunks[-2].strip()
-    if len(tail) >= _MIN_TTS_CHUNK_CHARS:
+    if len(tail) >= _MIN_TTS_CHUNK_CHARS or previous.endswith((",", ";", ":", "—")):
         return chunks
     joined = f"{previous} {tail}".strip()
     if len(joined) <= max_chars:

@@ -6,6 +6,7 @@ from typing import Any
 from app.config.settings import settings
 from app.audio.providers.base import BaseTTSProvider
 from app.audio.pronunciation import apply_pronunciation_map
+from app.audio.spoken_numbers import normalize_spoken_numbers
 
 logger = logging.getLogger(__name__)
 
@@ -101,4 +102,4 @@ class SileroTTSProvider(BaseTTSProvider):
 
 
 def prepare_silero_text(text: str) -> str:
-    return apply_pronunciation_map(text)
+    return normalize_spoken_numbers(apply_pronunciation_map(text))

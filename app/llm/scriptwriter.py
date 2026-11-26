@@ -786,7 +786,17 @@ def _build_chunk_user_prompt(
 
 
 def _clean_chunk_dialogue(script_text: str) -> str:
-    return repair_dialogue_script_text(script_text)
+    lines = []
+    seen = set()
+    for line in repair_dialogue_script_text(script_text).splitlines():
+        key = " ".join(line.replace("：", ":", 1).casefold().split())
+        _, _, dialogue = key.partition(":")
+        # Keep short reactions and answers to an explicit question.
+        if len(dialogue.split()) >= 12 and key in seen and not lines[-1].endswith("?"):
+            continue
+        seen.add(key)
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def _continuity_excerpt(scene: str) -> str:

@@ -87,7 +87,7 @@ def _render(episode_path: Path, args: argparse.Namespace) -> None:
                 f"Blocking issues: {', '.join(blocking)}. "
                 "Run `make podcast-script-check` or use --skip-quality-gate.",
             )
-        dialogue_lines = script_to_dialogue_lines(script_text)
+        dialogue_lines = script_to_dialogue_lines(script_text, split_for_tts=False)
         if not dialogue_lines:
             raise SystemExit("No speakable dialogue lines found.")
         dialogue_lines = prepare_dialogue_speech(
